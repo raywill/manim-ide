@@ -169,7 +169,7 @@ function loadPlugins() {
         'square.js',
         'arrow.js',
         'line.js',
-        'curve.js',
+        'curve/curve.js',
         'coordinateSystem.js'
     ];
     

@@ -11,6 +11,14 @@
 - 确定数学模型（圆的方程、贝塞尔公式等）
 - 确定绘制模式（drag/multiClick）
 - 确定属性结构
+- 确定插件文件结构，例如parabola插件结构如下：
+```
+js/plugins/
+└── parabola/
+    ├── parabola.js
+    ├── parabola.test.js
+    └── README.md
+```
 
 ### 实现阶段
 见后面的详细提示。
@@ -23,10 +31,10 @@
 - 导出测试
 - 属性面板测试（step是否正确）
 
-### 文档阶段
+### 发布阶段
 - README.md
 - 测试文件
-- 更新 index.html
+- 更新 index.html 注册插件文件
 
 
 ## 🚨 绝对不能犯的错误
@@ -41,6 +49,7 @@
 8. **handleScale用旧接口** → 必须用 {corner, fixedPoint, currentPoint}
 9. **renderDrawingPreview参数错误** → 签名是 (ctx, state, editor)，不是 (ctx, state, previewPoint, editor)
 10. **Arc用moveTo+closePath** → 画成扇形不是圆弧
+11. 默认值，如颜色、线宽、透明度等，必须在对象中集中管理，不要在函数中硬编码，用 SECTOR_DEFAULTS, PREVIEW_STYLES 两个对象来集中管理。
 
 ## 🔑 关键接口
 
