@@ -53,9 +53,9 @@ function testCircle() {
         if (el.type !== 'circle') throw new Error('type错误');
     });
     
-    test('默认半径应该是1', () => {
+    test('默认半径应该是0（拖动绘制避免闪现）', () => {
         const el = plugin.createDefault(0, 0);
-        if (el.props.radius !== 1) throw new Error('默认半径错误');
+        if (el.props.radius !== 0) throw new Error('默认半径错误');
     });
     
     // 测试2：getBounds

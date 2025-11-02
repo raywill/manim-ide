@@ -9,13 +9,13 @@ const path = require('path');
 const fs = require('fs');
 
 // 加载测试框架基础
-const testFramework = fs.readFileSync(path.join(__dirname, 'plugin_test.js'), 'utf8');
+const testFramework = fs.readFileSync(path.join(__dirname, '../../../tests/plugin_test.js'), 'utf8');
 eval(testFramework.split('// 加载所有插件')[0]);
 
-// 加载所有插件
+// 加载所有插件（根据当前文件位置修正路径）
 const plugins = ['circle', 'ellipse', 'sine', 'parabola'];
 plugins.forEach(name => {
-    const pluginPath = path.join(__dirname, `../js/plugins/${name}/${name}.js`);
+    const pluginPath = path.join(__dirname, `../${name}/${name}.js`);
     if (fs.existsSync(pluginPath)) {
         eval(fs.readFileSync(pluginPath, 'utf8'));
     }

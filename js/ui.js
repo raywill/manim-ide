@@ -122,13 +122,18 @@ function initCanvasEvents() {
         // 拖拽元素或控制点
         if (dragElement && isDragging) {
             if (dragOffset.type === 'curvePoint') {
-                // 拖动曲线控制点
-                const newPoints = [...dragElement.props.points];
-                newPoints[dragOffset.index] = [manimCoord.x, manimCoord.y, 0];
-                
-                updateElement(dragElement.id, {
-                    points: newPoints
-                });
+                // 拖动控制点（严格插件化）
+                const plugin = ManimEditor.shapeRegistry[dragElement.type];
+                if (!plugin || !plugin.updateControlPoint) {
+                    console.error(`插件 ${dragElement.type} 未实现 updateControlPoint()`);
+                    return;
+                }
+                const cps = plugin.getControlPoints ? plugin.getControlPoints(dragElement, ManimEditor) : [];
+                const pointId = cps && cps[dragOffset.index] ? cps[dragOffset.index].id : dragOffset.index;
+                const newProps = plugin.updateControlPoint(dragElement, pointId, manimCoord.x, manimCoord.y, ManimEditor);
+                if (newProps && typeof newProps === 'object') {
+                    updateElement(dragElement.id, newProps);
+                }
             } else if (dragOffset.type === 'scaleHandle') {
                 // 拖动缩放手柄
                 handleScaleDrag(dragElement, dragOffset, manimCoord);

@@ -88,10 +88,11 @@ function assertInRange(actual, min, max, message) {
 console.log('测试1: createDefault');
 const hexagon = plugin.createDefault(0, 0);
 assertEqual(hexagon.props.n, 6, '默认边数为6');
-assertEqual(hexagon.props.radius, 1.5, '默认半径为1.5');
+assertEqual(hexagon.props.radius, 0, '默认半径为0');
 
 // 测试2: getBounds计算
 console.log('\n测试2: getBounds');
+hexagon.props.radius = 1.5;
 const bounds = plugin.getBounds(hexagon, ManimEditor);
 assertEqual(bounds.w > 0, true, 'bounds宽度 > 0');
 assertEqual(bounds.h > 0, true, 'bounds高度 > 0');
@@ -125,10 +126,12 @@ assertInRange(manyBounds.w / manyBounds.h, 0.95, 1.05, '64边形宽高比接近1
 console.log('\n测试6: handleScale');
 const poly = plugin.createDefault(0, 0);
 poly.props.radius = 1;
+// 使用新接口：{corner, fixedPoint, currentPoint}
+// 期望把半径从1放大到2：选 bottomRight，固定点取(-2, 2)，当前点取(2, -2)
 const newProps = plugin.handleScale(poly, {
-    scaleX: 2,
-    scaleY: 2,
-    fixedPoint: { x: 0, y: 0 }
+    corner: 'bottomRight',
+    fixedPoint: { x: -2, y: 2 },
+    currentPoint: { x: 2, y: -2 }
 });
 assertEqual(newProps.radius, 2, '缩放后半径加倍');
 
@@ -136,12 +139,13 @@ assertEqual(newProps.radius, 2, '缩放后半径加倍');
 console.log('\n测试7: 等比例缩放');
 const poly2 = plugin.createDefault(0, 0);
 poly2.props.radius = 1;
+// 非等比传参已废弃，这里用不同 currentPoint 模拟更大bbox，但半径 = bboxSize/2
 const newProps2 = plugin.handleScale(poly2, {
-    scaleX: 2,
-    scaleY: 3,
-    fixedPoint: { x: 0, y: 0 }
+    corner: 'bottomRight',
+    fixedPoint: { x: -2, y: 2 },
+    currentPoint: { x: 2, y: -2 }
 });
-assertEqual(newProps2.radius, 2, '使用较小的缩放因子（min(2,3)=2）');
+assertEqual(newProps2.radius, 2, '使用较小的边框尺寸一半作为半径');
 
 // 测试8: 移动
 console.log('\n测试8: handleMove');

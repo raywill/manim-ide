@@ -19,27 +19,31 @@ else
 fi
 TOTAL=$((TOTAL + 1))
 
-# Circle测试
+# 自动扫描并运行所有插件测试（js/plugins/**/**/*.test.js 以及 js/plugins/**/*.test.js）
 echo ""
-echo "📋 Circle插件测试..."
-if node js/plugins/circle/circle.test.js; then
-    echo "✅ Circle测试通过"
-    PASSED=$((PASSED + 1))
-else
-    echo "❌ Circle测试失败"
-fi
-TOTAL=$((TOTAL + 1))
+echo "🔎 扫描插件测试..."
 
-# Ellipse测试
-echo ""
-echo "📋 Ellipse插件测试..."
-if node js/plugins/ellipse/ellipse.test.js; then
-    echo "✅ Ellipse测试通过"
-    PASSED=$((PASSED + 1))
+# 收集测试文件列表
+PLUGIN_TESTS=()
+while IFS= read -r -d '' file; do
+    PLUGIN_TESTS+=("$file")
+done < <(find js/plugins -type f -name "*.test.js" -print0 | sort -z)
+
+if [ ${#PLUGIN_TESTS[@]} -eq 0 ]; then
+    echo "（未发现插件测试文件）"
 else
-    echo "❌ Ellipse测试失败"
+    for test_file in "${PLUGIN_TESTS[@]}"; do
+        echo ""
+        echo "📋 运行插件测试: $test_file"
+        if node "$test_file"; then
+            echo "✅ $test_file 通过"
+            PASSED=$((PASSED + 1))
+        else
+            echo "❌ $test_file 失败"
+        fi
+        TOTAL=$((TOTAL + 1))
+    done
 fi
-TOTAL=$((TOTAL + 1))
 
 # 总结
 echo ""

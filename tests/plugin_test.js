@@ -165,12 +165,12 @@ global.formatNumber = function(num, precision = 2) {
 function loadPlugins() {
     const pluginsDir = path.join(__dirname, '../js/plugins');
     const pluginFiles = [
-        'rectangle.js',
-        'square.js',
-        'arrow.js',
-        'line.js',
-        'curve.js',
-        'coordinateSystem.js'
+        'rectangle/rectangle.js',
+        'square/square.js',
+        'arrow/arrow.js',
+        'line/line.js',
+        'curve/curve.js',
+        'coordinateSystem/coordinateSystem.js'
     ];
     
     pluginFiles.forEach(file => {
@@ -205,8 +205,9 @@ function testRectangle() {
     log('\n[测试1] createDefault', 'yellow');
     const element = plugin.createDefault(0, 0);
     assert(element.type === 'rectangle', 'type应该是rectangle');
-    assert(element.props.width === 2, 'default width应该是2');
-    assert(element.props.height === 1, 'default height应该是1');
+    // 拖动绘制规范：默认尺寸应为0，避免闪现
+    assert(element.props.width === 0, 'default width应该是0');
+    assert(element.props.height === 0, 'default height应该是0');
     
     // 测试2：getBounds
     log('\n[测试2] getBounds', 'yellow');
