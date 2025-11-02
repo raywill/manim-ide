@@ -7,6 +7,16 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Initializing Manim Visual Editor...');
     
+    // 检查必要的函数是否已加载
+    if (typeof initCanvas !== 'function') {
+        console.error('core.js 未正确加载');
+        return;
+    }
+    if (typeof initUI !== 'function') {
+        console.error('ui.js 未正确加载');
+        return;
+    }
+    
     // 初始化画布
     initCanvas();
     
@@ -73,8 +83,16 @@ window.ManimEditor = ManimEditor;
 window.exportManimCode = generateManimCode;
 window.clearScene = clearScene;
 
+// 切换响应区域调试显示
+window.toggleHandleDebug = function() {
+    ManimEditor.showHandleDebug = !ManimEditor.showHandleDebug;
+    render();
+    console.log(`控制点响应区域显示: ${ManimEditor.showHandleDebug ? '开启' : '关闭'}`);
+};
+
 console.log('%cDebug commands available:', 'color: #95a5a6; font-size: 12px;');
 console.log('- ManimEditor: 访问编辑器状态');
 console.log('- exportManimCode(): 生成Manim代码');
 console.log('- clearScene(): 清空场景');
+console.log('- toggleHandleDebug(): 切换控制点响应区域显示（默认开启）');
 

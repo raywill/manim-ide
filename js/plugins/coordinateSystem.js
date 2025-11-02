@@ -78,34 +78,66 @@ registerShape({
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         
-        // X轴刻度
+        // X轴刻度 - 从0开始向两边绘制
         const xStep = xRange[2] || 1;
-        for (let i = xRange[0]; i <= xRange[1]; i += xStep) {
-            if (i === 0) continue;
-            const x = center.x + (i / (xRange[1] - xRange[0])) * xLength;
+        const xMin = xRange[0];
+        const xMax = xRange[1];
+        
+        // 计算小数位数（与步长一致）
+        const xDecimals = xStep % 1 === 0 ? 0 : xStep.toString().split('.')[1]?.length || 0;
+        
+        // 从0向右绘制
+        for (let i = 0; i <= xMax; i = parseFloat((i + xStep).toFixed(10))) {
+            if (i === 0 || i > xMax) continue;
+            const x = center.x + (i / (xMax - xMin)) * xLength;
             ctx.beginPath();
             ctx.moveTo(x, center.y - 5);
             ctx.lineTo(x, center.y + 5);
             ctx.stroke();
-            
-            // 标签
-            ctx.fillText(i.toString(), x, center.y + 8);
+            ctx.fillText(i.toFixed(xDecimals), x, center.y + 8);
         }
         
-        // Y轴刻度
+        // 从0向左绘制
+        for (let i = 0; i >= xMin; i = parseFloat((i - xStep).toFixed(10))) {
+            if (i === 0 || i < xMin) continue;
+            const x = center.x + (i / (xMax - xMin)) * xLength;
+            ctx.beginPath();
+            ctx.moveTo(x, center.y - 5);
+            ctx.lineTo(x, center.y + 5);
+            ctx.stroke();
+            ctx.fillText(i.toFixed(xDecimals), x, center.y + 8);
+        }
+        
+        // Y轴刻度 - 从0开始向两边绘制
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         const yStep = yRange[2] || 1;
-        for (let i = yRange[0]; i <= yRange[1]; i += yStep) {
-            if (i === 0) continue;
-            const y = center.y - (i / (yRange[1] - yRange[0])) * yLength;
+        const yMin = yRange[0];
+        const yMax = yRange[1];
+        
+        // 计算小数位数（与步长一致）
+        const yDecimals = yStep % 1 === 0 ? 0 : yStep.toString().split('.')[1]?.length || 0;
+        
+        // 从0向上绘制
+        for (let i = 0; i <= yMax; i = parseFloat((i + yStep).toFixed(10))) {
+            if (i === 0 || i > yMax) continue;
+            const y = center.y - (i / (yMax - yMin)) * yLength;
             ctx.beginPath();
             ctx.moveTo(center.x - 5, y);
             ctx.lineTo(center.x + 5, y);
             ctx.stroke();
-            
-            // 标签
-            ctx.fillText(i.toString(), center.x - 8, y);
+            ctx.fillText(i.toFixed(yDecimals), center.x - 8, y);
+        }
+        
+        // 从0向下绘制
+        for (let i = 0; i >= yMin; i = parseFloat((i - yStep).toFixed(10))) {
+            if (i === 0 || i < yMin) continue;
+            const y = center.y - (i / (yMax - yMin)) * yLength;
+            ctx.beginPath();
+            ctx.moveTo(center.x - 5, y);
+            ctx.lineTo(center.x + 5, y);
+            ctx.stroke();
+            ctx.fillText(i.toFixed(yDecimals), center.x - 8, y);
         }
         
         // 绘制原点标记
@@ -159,6 +191,12 @@ registerShape({
     properties: [
         { key: 'x', label: 'X坐标', type: 'number' },
         { key: 'y', label: 'Y坐标', type: 'number' },
+        { key: 'x_range[0]', label: 'X轴最小值', type: 'number' },
+        { key: 'x_range[1]', label: 'X轴最大值', type: 'number' },
+        { key: 'x_range[2]', label: 'X轴步长', type: 'number' },
+        { key: 'y_range[0]', label: 'Y轴最小值', type: 'number' },
+        { key: 'y_range[1]', label: 'Y轴最大值', type: 'number' },
+        { key: 'y_range[2]', label: 'Y轴步长', type: 'number' },
         { key: 'x_length', label: 'X轴长度', type: 'number' },
         { key: 'y_length', label: 'Y轴长度', type: 'number' },
         { key: 'axis_color', label: '轴颜色', type: 'color' },

@@ -31,52 +31,110 @@ registerShape({
         
         if (!points || points.length < 2) return;
         
+        const isSelected = element.id === editor.selectedElement?.id;
+        
         ctx.strokeStyle = props.color || '#9b59b6';
         ctx.lineWidth = props.stroke_width || 2;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         
-        // 绘制平滑曲线
+        // 绘制平滑的贝塞尔曲线（支持任意点数）
         ctx.beginPath();
-        const firstPoint = editor.manimToCanvas(points[0][0], points[0][1]);
-        ctx.moveTo(firstPoint.x, firstPoint.y);
+        const startPoint = editor.manimToCanvas(points[0][0], points[0][1]);
+        ctx.moveTo(startPoint.x, startPoint.y);
         
         if (points.length === 2) {
-            // 只有两个点，绘制直线
-            const secondPoint = editor.manimToCanvas(points[1][0], points[1][1]);
-            ctx.lineTo(secondPoint.x, secondPoint.y);
+            // 两个点，直线
+            const p1 = editor.manimToCanvas(points[1][0], points[1][1]);
+            ctx.lineTo(p1.x, p1.y);
+        } else if (points.length === 3) {
+            // 三个点，二次贝塞尔
+            const p1 = editor.manimToCanvas(points[1][0], points[1][1]);
+            const p2 = editor.manimToCanvas(points[2][0], points[2][1]);
+            ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+        } else if (points.length === 4) {
+            // 四个点，三次贝塞尔
+            const p1 = editor.manimToCanvas(points[1][0], points[1][1]);
+            const p2 = editor.manimToCanvas(points[2][0], points[2][1]);
+            const p3 = editor.manimToCanvas(points[3][0], points[3][1]);
+            ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
         } else {
-            // 多个点，使用二次贝塞尔曲线平滑连接
-            for (let i = 0; i < points.length - 1; i++) {
-                const p0 = editor.manimToCanvas(points[i][0], points[i][1]);
-                const p1 = editor.manimToCanvas(points[i + 1][0], points[i + 1][1]);
-                
-                if (i === points.length - 2) {
-                    // 最后一段，直接连到终点
-                    ctx.lineTo(p1.x, p1.y);
-                } else {
-                    // 使用二次贝塞尔曲线
+            // 多于4个点，使用分段三次贝塞尔曲线平滑连接
+            for (let i = 0; i < points.length - 1; i += 3) {
+                if (i + 3 < points.length) {
+                    // 完整的三次贝塞尔段
+                    const p1 = editor.manimToCanvas(points[i + 1][0], points[i + 1][1]);
                     const p2 = editor.manimToCanvas(points[i + 2][0], points[i + 2][1]);
-                    const cpX = p1.x;
-                    const cpY = p1.y;
-                    const endX = (p1.x + p2.x) / 2;
-                    const endY = (p1.y + p2.y) / 2;
-                    
-                    ctx.quadraticCurveTo(cpX, cpY, endX, endY);
+                    const p3 = editor.manimToCanvas(points[i + 3][0], points[i + 3][1]);
+                    ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                } else if (i + 2 < points.length) {
+                    // 剩余3个点，用二次贝塞尔
+                    const p1 = editor.manimToCanvas(points[i + 1][0], points[i + 1][1]);
+                    const p2 = editor.manimToCanvas(points[i + 2][0], points[i + 2][1]);
+                    ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+                } else if (i + 1 < points.length) {
+                    // 剩余2个点，直线
+                    const p1 = editor.manimToCanvas(points[i + 1][0], points[i + 1][1]);
+                    ctx.lineTo(p1.x, p1.y);
                 }
             }
         }
         
         ctx.stroke();
         
-        // 绘制控制点
-        ctx.fillStyle = props.color || '#9b59b6';
-        points.forEach(point => {
-            const canvasPoint = editor.manimToCanvas(point[0], point[1]);
-            ctx.beginPath();
-            ctx.arc(canvasPoint.x, canvasPoint.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-        });
+        // 只在选中状态时绘制控制点
+        if (isSelected) {
+            // 绘制控制线（连接控制点的虚线）
+            if (points.length >= 4) {
+                ctx.strokeStyle = '#bdc3c7';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                
+                // P0 到 P1
+                const p0 = editor.manimToCanvas(points[0][0], points[0][1]);
+                const p1 = editor.manimToCanvas(points[1][0], points[1][1]);
+                ctx.moveTo(p0.x, p0.y);
+                ctx.lineTo(p1.x, p1.y);
+                
+                // P2 到 P3
+                if (points.length >= 4) {
+                    const p2 = editor.manimToCanvas(points[points.length - 2][0], points[points.length - 2][1]);
+                    const p3 = editor.manimToCanvas(points[points.length - 1][0], points[points.length - 1][1]);
+                    ctx.moveTo(p2.x, p2.y);
+                    ctx.lineTo(p3.x, p3.y);
+                }
+                
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            
+            // 绘制所有控制点
+            points.forEach((point, index) => {
+                const canvasPoint = editor.manimToCanvas(point[0], point[1]);
+                
+                // 起点和终点用不同颜色
+                if (index === 0 || index === points.length - 1) {
+                    ctx.fillStyle = '#e74c3c'; // 红色
+                } else {
+                    ctx.fillStyle = '#3498db'; // 蓝色
+                }
+                
+                ctx.beginPath();
+                ctx.arc(canvasPoint.x, canvasPoint.y, 6, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 白色边框
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // 显示点的标签
+                ctx.fillStyle = '#2c3e50';
+                ctx.font = '11px monospace';
+                ctx.fillText(`P${index}`, canvasPoint.x + 10, canvasPoint.y - 10);
+            });
+        }
     },
     
     hitTest: function(element, manimX, manimY, editor) {
@@ -124,20 +182,38 @@ registerShape({
         const props = element.props;
         const varName = sanitizeVariableName(element.name);
         const color = hexToManimColor(props.color || '#9b59b6');
+        const points = props.points;
         
-        // 格式化点数组
-        const pointsStr = props.points.map(p => 
-            `[${formatNumber(p[0])}, ${formatNumber(p[1])}, 0]`
-        ).join(', ');
-        
-        let code = `${varName} = VMobject(color=${color})`;
-        code += `\n        ${varName}.set_points_smoothly([${pointsStr}])`;
-        
-        if (props.stroke_width && props.stroke_width !== 2) {
-            code += `\n        ${varName}.set_stroke(width=${formatNumber(props.stroke_width)})`;
+        // 根据点的数量使用不同的Manim方法
+        if (points.length === 4) {
+            // 四个点：使用CubicBezier（三次贝塞尔曲线）
+            const p0 = `[${formatNumber(points[0][0])}, ${formatNumber(points[0][1])}, 0]`;
+            const p1 = `[${formatNumber(points[1][0])}, ${formatNumber(points[1][1])}, 0]`;
+            const p2 = `[${formatNumber(points[2][0])}, ${formatNumber(points[2][1])}, 0]`;
+            const p3 = `[${formatNumber(points[3][0])}, ${formatNumber(points[3][1])}, 0]`;
+            
+            let code = `${varName} = CubicBezier(${p0}, ${p1}, ${p2}, ${p3}, color=${color})`;
+            
+            if (props.stroke_width && props.stroke_width !== 2) {
+                code += `.set_stroke(width=${formatNumber(props.stroke_width)})`;
+            }
+            
+            return code;
+        } else {
+            // 其他数量的点：使用VMobject的set_points_smoothly
+            const pointsStr = points.map(p => 
+                `[${formatNumber(p[0])}, ${formatNumber(p[1])}, 0]`
+            ).join(', ');
+            
+            let code = `${varName} = VMobject(color=${color})`;
+            code += `\n        ${varName}.set_points_smoothly([${pointsStr}])`;
+            
+            if (props.stroke_width && props.stroke_width !== 2) {
+                code += `\n        ${varName}.set_stroke(width=${formatNumber(props.stroke_width)})`;
+            }
+            
+            return code;
         }
-        
-        return code;
     },
     
     properties: [

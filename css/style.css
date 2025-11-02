@@ -231,21 +231,24 @@ button:disabled {
     display: block;
 }
 
-/* 右侧属性面板 */
+/* 右侧属性面板 - 浮动覆盖模式 */
 #property-panel {
+    position: fixed;
+    right: 0;
+    top: 60px;
     width: 300px;
+    height: calc(100vh - 60px);
     background-color: #ecf0f1;
     border-left: 1px solid #bdc3c7;
+    box-shadow: -2px 0 10px rgba(0,0,0,0.2);
     display: flex;
     flex-direction: column;
     transition: transform 0.3s ease-in-out;
+    z-index: 200;
 }
 
 #property-panel.hidden {
     transform: translateX(100%);
-    position: absolute;
-    right: 0;
-    height: 100%;
 }
 
 .panel-header {
