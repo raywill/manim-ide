@@ -29,8 +29,10 @@ class GeneratedScene(Scene):
     elements.forEach(element => {
         const plugin = ManimEditor.shapeRegistry[element.type];
         if (plugin && plugin.toManim) {
-            const manimCode = plugin.toManim(element);
-            code += `        ${manimCode}\n`;
+            const manimCode = plugin.toManim(element) || '';
+            // 缩进多行：确保每一行都有与 construct 体一致的缩进
+            const indented = manimCode.split('\n').map(line => `        ${line}`).join('\n');
+            code += indented + '\n';
         }
     });
     

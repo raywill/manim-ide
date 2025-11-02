@@ -401,10 +401,13 @@ registerShape({
         const varName = sanitizeVariableName(element.name);
         const circleInfo = calculateArcCircle(props.pointA, props.pointB, props.pointC);
         if (!circleInfo) return `# ${varName}: 三点共线，无法生成扇形`;
-        const { center, radius, startAngle, endAngle } = circleInfo;
+        const { center, radius, startAngle, endAngle, throughAngle } = circleInfo;
         const startRad = startAngle * Math.PI / 180;
-        const angleSpan = ((endAngle - startAngle + 360) % 360) * Math.PI / 180;
-        let code = `${varName} = Sector(radius=${formatNumber(radius)}, start_angle=${formatNumber(startRad)}, angle=${formatNumber(angleSpan)})`;
+        const spanAC = (endAngle - startAngle + 360) % 360;      // CCW A->C
+        const spanAB = (throughAngle - startAngle + 360) % 360;  // CCW A->B
+        const signedSpanDeg = (spanAB <= spanAC) ? spanAC : -(360 - spanAC);
+        const signedSpanRad = signedSpanDeg * Math.PI / 180;
+        let code = `${varName} = Sector(radius=${formatNumber(radius)}, start_angle=${formatNumber(startRad)}, angle=${formatNumber(signedSpanRad)})`;
         code += `.move_to([${formatNumber(center.x)}, ${formatNumber(center.y)}, 0])`;
         const fillColor = hexToManimColor(props.fill_color || SECTOR_DEFAULTS.fill_color);
         const fillOpacity = props.fill_opacity !== undefined ? props.fill_opacity : SECTOR_DEFAULTS.fill_opacity;

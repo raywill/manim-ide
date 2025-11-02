@@ -520,14 +520,18 @@ registerShape({
             return `# ${varName}: 三点共线，无法生成圆弧`;
         }
         
-        const { center, radius, startAngle, endAngle } = circleInfo;
+        const { center, radius, startAngle, endAngle, throughAngle } = circleInfo;
         const strokeColor = hexToManimColor(props.stroke_color || '#e74c3c');
         
         // Manim Arc 参数
         const startRad = startAngle * Math.PI / 180;
-        const angleSpan = ((endAngle - startAngle + 360) % 360) * Math.PI / 180;
+        const spanAC = (endAngle - startAngle + 360) % 360;      // CCW A->C
+        const spanAB = (throughAngle - startAngle + 360) % 360;  // CCW A->B
+        // 判断经过B的方向：如果在CCW路径上B先于C，则选择+spanAC；否则选择-(360-spanAC)
+        const signedSpanDeg = (spanAB <= spanAC) ? spanAC : -(360 - spanAC);
+        const signedSpanRad = signedSpanDeg * Math.PI / 180;
         
-        let code = `${varName} = Arc(radius=${formatNumber(radius)}, start_angle=${formatNumber(startRad)}, angle=${formatNumber(angleSpan)})`;
+        let code = `${varName} = Arc(radius=${formatNumber(radius)}, start_angle=${formatNumber(startRad)}, angle=${formatNumber(signedSpanRad)})`;
         code += `.move_to([${formatNumber(center.x)}, ${formatNumber(center.y)}, 0])`;
         
         const strokeWidth = formatNumber(props.stroke_width !== undefined ? props.stroke_width : 10);

@@ -408,12 +408,14 @@ registerShape({
         const ratio = p.radius_ratio !== undefined ? p.radius_ratio : ANGLE_DEFAULTS.radius_ratio;
         const info = computeAngleArcInfo(p.pointA, p.pointB, p.pointC, ratio);
         const startRad = info.startDeg * Math.PI / 180;
-        const angleSpan = (normDeg(info.endDeg - info.startDeg));
-        const smallSpan = angleSpan <= 180 ? angleSpan : 360 - angleSpan;
-        const angleRad = smallSpan * Math.PI / 180;
+        // 以B为中心的两条射线：A与C。总是选择小于等于180°的较小夹角。
+        const spanAC = normDeg(info.endDeg - info.startDeg);
+        const signedSpanDeg = (spanAC <= 180) ? spanAC : -(360 - spanAC);
+        const angleRad = signedSpanDeg * Math.PI / 180;
 
         let code = `${varName}_core = Arc(radius=${formatNumber(info.radius)}, start_angle=${formatNumber(startRad)}, angle=${formatNumber(angleRad)})`;
-        code += `.move_to([${formatNumber(info.center.x)}, ${formatNumber(info.center.y)}, 0])`;
+        // 对于Arc，应使用 move_arc_center_to 精确移动圆心
+        code += `.move_arc_center_to([${formatNumber(info.center.x)}, ${formatNumber(info.center.y)}, 0])`;
         const strokeColor = hexToManimColor(p.stroke_color || ANGLE_DEFAULTS.stroke_color);
         const strokeWidth = formatNumber(p.stroke_width !== undefined ? p.stroke_width : ANGLE_DEFAULTS.stroke_width);
         code += `.set_stroke(${strokeColor}, width=${strokeWidth})`;
@@ -429,7 +431,17 @@ registerShape({
         code += `.set_color(${labelColor}).move_to([${formatNumber(lx)}, ${formatNumber(ly)}, 0])`;
 
         // 分组：确保导出时 self.add(${varName}) 能同时添加弧与θ
-        code += `\n${varName} = VGroup(${varName}_core, ${varName}_theta)`;
+        // 边线（B->A 与 B->C）
+        const ax = formatNumber(p.pointA[0]);
+        const ay = formatNumber(p.pointA[1]);
+        const bx = formatNumber(p.pointB[0]);
+        const by = formatNumber(p.pointB[1]);
+        const cx = formatNumber(p.pointC[0]);
+        const cy = formatNumber(p.pointC[1]);
+        code += `\n${varName}_edge1 = Line([${bx}, ${by}, 0], [${ax}, ${ay}, 0]).set_stroke(${strokeColor}, width=${strokeWidth})`;
+        code += `\n${varName}_edge2 = Line([${bx}, ${by}, 0], [${cx}, ${cy}, 0]).set_stroke(${strokeColor}, width=${strokeWidth})`;
+
+        code += `\n${varName} = VGroup(${varName}_edge1, ${varName}_edge2, ${varName}_core, ${varName}_theta)`;
         const z = p.z_order !== undefined ? p.z_order : ANGLE_DEFAULTS.z_order;
         if (z !== 0) code += `.set_z_index(${z})`;
 

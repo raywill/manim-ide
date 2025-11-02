@@ -314,8 +314,10 @@ function drawOrigin(ctx, canvas) {
     const centerY = canvas.height / 2;
     
     // 绘制Manim场景边界（默认16:9比例，宽14.22单位，高8单位）
-    const sceneWidth = 14.22 * 50;  // 14.22 Manim单位
-    const sceneHeight = 8 * 50;     // 8 Manim单位
+    // 仅用于UI可视的边框展示，可按比例放大，导出与坐标映射不受影响
+    const SCENE_DISPLAY_SCALE = 1.10; // 轻微扩大10%
+    const sceneWidth = 14.22 * 50 * SCENE_DISPLAY_SCALE;  // 14.22 Manim单位（可视放大）
+    const sceneHeight = 8 * 50 * SCENE_DISPLAY_SCALE;     // 8 Manim单位（可视放大）
     
     ctx.strokeStyle = '#95a5a6';
     ctx.lineWidth = 2;
