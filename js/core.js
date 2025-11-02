@@ -481,18 +481,12 @@ function deleteElement(elementId) {
 function updateElement(elementId, newProps) {
     const element = ManimEditor.elements.find(e => e.id === elementId);
     if (element) {
-        console.log('[updateElement] Before:', JSON.stringify(element.props));
-        console.log('[updateElement] newProps:', JSON.stringify(newProps));
-        
         const oldZOrder = element.props.z_order;
         element.props = { ...element.props, ...newProps };
         
-        console.log('[updateElement] After:', JSON.stringify(element.props));
-        
-        // 只有 z_order 变化时才更新排序缓存（性能优化）
+        // 只有 z_order 变化时才更新排序（性能优化）
         const newZOrder = element.props.z_order;
         if (oldZOrder !== newZOrder) {
-            console.log('[updateElement] z_order changed, reordering elements');
             updateElementsOrder();
         }
         

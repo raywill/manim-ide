@@ -153,9 +153,7 @@ function initCanvasEvents() {
                         moveInfo.deltaY = dy - dragOffset.lastY;
                     }
                     
-                    console.log('[mousemove] moveInfo:', moveInfo);
                     const newProps = plugin.handleMove(dragElement, moveInfo, ManimEditor);
-                    console.log('[mousemove] handleMove returned:', newProps);
                     updateElement(dragElement.id, newProps);
                     
                     // 更新lastX/lastY
@@ -313,8 +311,6 @@ function initCanvasEvents() {
             const plugin = ManimEditor.shapeRegistry[clickedElement.type];
             const anchor = plugin && plugin.getMoveAnchor ? plugin.getMoveAnchor(clickedElement) : null;
             
-            console.log('[mousedown] clickPoint:', manimCoord, 'anchor:', anchor);
-            
             if (anchor === null) {
                 // null表示使用增量移动
                 dragOffset = {
@@ -332,8 +328,6 @@ function initCanvasEvents() {
                     y: manimCoord.y - anchor.y
                 };
             }
-            
-            console.log('[mousedown] dragOffset:', dragOffset);
             
             render();
         } else {
