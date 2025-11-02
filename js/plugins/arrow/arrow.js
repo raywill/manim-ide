@@ -13,8 +13,8 @@ registerShape({
             type: 'arrow',
             name: 'arrow_' + (ManimEditor.elements.length + 1),
             props: {
-                start: [x - 1, y, 0],
-                end: [x + 1, y, 0],
+                start: [x !== undefined ? x : 0, y !== undefined ? y : 0, 0],
+                end: [x !== undefined ? x : 0, y !== undefined ? y : 0, 0],
                 color: '#e74c3c',
                 stroke_width: 2,
                 z_order: 0,

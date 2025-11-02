@@ -829,7 +829,8 @@ function showPropertyPanel(element) {
     // 形状特定属性
     if (plugin.properties && plugin.properties.length > 0) {
         plugin.properties.forEach(prop => {
-            addPropertyField(content, element, prop.key, prop.label, prop.type, prop.options);
+            // 传入完整的属性定义对象，便于读取 step/min/max/options
+            addPropertyField(content, element, prop.key, prop.label, prop.type, prop);
         });
     } else {
         // 默认属性
@@ -865,7 +866,8 @@ function addPropertyField(container, element, key, label, type, options) {
         input.checked = !!value;
     } else if (type === 'select' && options) {
         input = document.createElement('select');
-        options.forEach(opt => {
+        const optList = Array.isArray(options) ? options : (options.options || []);
+        optList.forEach(opt => {
             const option = document.createElement('option');
             option.value = opt.value;
             option.textContent = opt.label;

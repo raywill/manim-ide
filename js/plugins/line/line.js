@@ -13,8 +13,8 @@ registerShape({
             type: 'line',
             name: 'line_' + (ManimEditor.elements.length + 1),
             props: {
-                start: [x - 1, y, 0],
-                end: [x + 1, y, 0],
+                start: [x !== undefined ? x : 0, y !== undefined ? y : 0, 0],
+                end: [x !== undefined ? x : 0, y !== undefined ? y : 0, 0],
                 color: '#2c3e50',
                 stroke_width: 2,
                 z_order: 0,
