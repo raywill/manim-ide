@@ -1,0 +1,197 @@
+/**
+ * Circle 插件示例 - 圆形
+ * 
+ * 这是一个完整的v2.0插件示例，展示了如何实现所有接口方法。
+ * 将此文件重命名为circle.js并在index.html中引入即可使用。
+ */
+
+registerShape({
+    // ═══════════════════════════════════════════
+    // 基础信息
+    // ═══════════════════════════════════════════
+    type: 'circle',
+    name: '圆形',
+    icon: '⭕',
+    version: '1.0.0',
+    drawMode: 'drag',
+    
+    // ═══════════════════════════════════════════
+    // 能力声明
+    // ═══════════════════════════════════════════
+    capabilities: {
+        movable: true,
+        scalable: true,
+        rotatable: false,
+        editable: true,
+        deletable: true,
+        copyable: true,
+        hasControlPoints: false  // 可选：改为true并实现getControlPoints
+    },
+    
+    // ═══════════════════════════════════════════
+    // 生命周期：创建
+    // ═══════════════════════════════════════════
+    createDefault: function(x, y) {
+        return {
+            type: 'circle',
+            name: 'circle_' + (ManimEditor.elements.length + 1),
+            props: {
+                x: x || 0,
+                y: y || 0,
+                radius: 1,
+                color: '#3498db',
+                opacity: 1,
+                hidden: false
+            }
+        };
+    },
+    
+    // ═══════════════════════════════════════════
+    // 生命周期：渲染
+    // ═══════════════════════════════════════════
+    render: function(ctx, element, editor) {
+        const props = element.props;
+        
+        // 坐标转换
+        const pos = editor.manimToCanvas(props.x, props.y);
+        const radius = (props.radius || 1) * 50;  // Manim单位 → 像素
+        
+        // 绘制圆形
+        ctx.fillStyle = props.color || '#3498db';
+        ctx.globalAlpha = props.opacity !== undefined ? props.opacity : 1;
+        ctx.strokeStyle = '#2c3e50';
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // 绘制中心点
+        ctx.fillStyle = '#95a5a6';
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+    },
+    
+    // ═══════════════════════════════════════════
+    // 生命周期：拖动绘制
+    // ═══════════════════════════════════════════
+    updateWhileDrawing: function(element, start, current, editor) {
+        // 中心在起点
+        element.props.x = start.manimX;
+        element.props.y = start.manimY;
+        
+        // 半径 = 起点到当前点的距离
+        const dx = current.manimX - start.manimX;
+        const dy = current.manimY - start.manimY;
+        element.props.radius = Math.sqrt(dx * dx + dy * dy);
+    },
+    
+    // ═══════════════════════════════════════════
+    // 交互：碰撞检测
+    // ═══════════════════════════════════════════
+    hitTest: function(element, manimX, manimY, editor) {
+        const props = element.props;
+        
+        // 点到圆心的距离
+        const dx = manimX - props.x;
+        const dy = manimY - props.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // 是否在圆内（加一点容差）
+        return distance <= props.radius + 0.1;
+    },
+    
+    // ═══════════════════════════════════════════
+    // 交互：边界框
+    // ═══════════════════════════════════════════
+    getBounds: function(element, editor) {
+        const props = element.props;
+        const pos = editor.manimToCanvas(props.x, props.y);
+        const radius = (props.radius || 1) * 50;
+        
+        // 圆的边界框是正方形
+        return {
+            x: pos.x - radius,
+            y: pos.y - radius,
+            w: radius * 2,
+            h: radius * 2
+        };
+    },
+    
+    // ═══════════════════════════════════════════
+    // 交互：缩放处理
+    // ═══════════════════════════════════════════
+    handleScale: function(element, scaleInfo, editor) {
+        const { corner, fixedPoint, currentPoint, isShift, originalProps } = scaleInfo;
+        const helpers = editor.scaleHelpers;
+        
+        // 1. 计算新尺寸
+        const newWidth = Math.abs(currentPoint.x - fixedPoint.x);
+        const newHeight = Math.abs(currentPoint.y - fixedPoint.y);
+        
+        // 2. 圆形：取最大值作为新半径（总是等比例）
+        const newRadius = Math.max(newWidth, newHeight);
+        
+        // 3. 计算新中心
+        const newCorner = helpers.getNewCornerPosition(corner, fixedPoint, newRadius, newRadius);
+        const newCenterX = (fixedPoint.x + newCorner.x) / 2;
+        const newCenterY = (fixedPoint.y + newCorner.y) / 2;
+        
+        // 4. 返回新属性
+        return {
+            radius: Math.max(0.1, newRadius),
+            x: newCenterX,
+            y: newCenterY
+        };
+    },
+    
+    // ═══════════════════════════════════════════
+    // 交互：移动处理
+    // ═══════════════════════════════════════════
+    handleMove: function(element, moveInfo, editor) {
+        // 简单移动中心点
+        return {
+            x: moveInfo.currentPoint.x - moveInfo.offset.x,
+            y: moveInfo.currentPoint.y - moveInfo.offset.y
+        };
+    },
+    
+    // ═══════════════════════════════════════════
+    // 导出：Manim代码
+    // ═══════════════════════════════════════════
+    toManim: function(element) {
+        const props = element.props;
+        const varName = sanitizeVariableName(element.name);
+        const radius = formatNumber(props.radius || 1);
+        const color = hexToManimColor(props.color || '#3498db');
+        const x = formatNumber(props.x);
+        const y = formatNumber(props.y);
+        
+        let code = `${varName} = Circle(radius=${radius}, color=${color})`;
+        
+        if (props.x !== 0 || props.y !== 0) {
+            code += `.move_to([${x}, ${y}, 0])`;
+        }
+        
+        if (props.opacity !== undefined && props.opacity !== 1) {
+            code += `.set_opacity(${formatNumber(props.opacity)})`;
+        }
+        
+        return code;
+    },
+    
+    // ═══════════════════════════════════════════
+    // 配置：属性定义
+    // ═══════════════════════════════════════════
+    properties: [
+        { key: 'x', label: 'X坐标', type: 'number', step: 0.1, group: 'position' },
+        { key: 'y', label: 'Y坐标', type: 'number', step: 0.1, group: 'position' },
+        { key: 'radius', label: '半径', type: 'number', step: 0.1, min: 0.1, group: 'size' },
+        { key: 'color', label: '颜色', type: 'color', group: 'style' },
+        { key: 'opacity', label: '不透明度', type: 'number', step: 0.1, min: 0, max: 1, group: 'style' }
+    ]
+});
+

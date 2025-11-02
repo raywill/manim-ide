@@ -6,6 +6,7 @@ registerShape({
     type: 'line',
     name: '线段',
     icon: '—',
+    version: '2.0.0-migrated',
     
     createDefault: function(x, y) {
         return {
@@ -92,6 +93,124 @@ registerShape({
         code += ')';
         
         return code;
+    },
+    
+    // ═══════════════════════════════════════════
+    // 插件化v2.0新增方法
+    // ═══════════════════════════════════════════
+    
+    getBounds: function(element, editor) {
+        const props = element.props;
+        const start = editor.manimToCanvas(props.start[0], props.start[1]);
+        const end = editor.manimToCanvas(props.end[0], props.end[1]);
+        const minX = Math.min(start.x, end.x);
+        const minY = Math.min(start.y, end.y);
+        const maxX = Math.max(start.x, end.x);
+        const maxY = Math.max(start.y, end.y);
+        
+        // 注意：不加padding！padding会导致缩放时固定点计算错误
+        return { 
+            x: minX, 
+            y: minY, 
+            w: maxX - minX, 
+            h: maxY - minY 
+        };
+    },
+    
+    updateWhileDrawing: function(element, start, current, editor) {
+        element.props.start = [start.manimX, start.manimY, 0];
+        element.props.end = [current.manimX, current.manimY, 0];
+    },
+    
+    handleScale: function(element, scaleInfo, editor) {
+        const { corner, fixedPoint, currentPoint, isShift, originalProps } = scaleInfo;
+        
+        const start = { x: originalProps.start[0], y: originalProps.start[1] };
+        const end = { x: originalProps.end[0], y: originalProps.end[1] };
+        const center = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+        
+        const minX = Math.min(start.x, end.x);
+        const maxX = Math.max(start.x, end.x);
+        const minY = Math.min(start.y, end.y);
+        const maxY = Math.max(start.y, end.y);
+        const originalWidth = maxX - minX;
+        const originalHeight = maxY - minY;
+        
+        // 步骤1：计算新尺寸
+        let newWidth = Math.abs(currentPoint.x - fixedPoint.x);
+        let newHeight = Math.abs(currentPoint.y - fixedPoint.y);
+        
+        // 步骤2：等比例调整
+        if (isShift && originalWidth > 0 && originalHeight > 0) {
+            const scaleW = newWidth / originalWidth;
+            const scaleH = newHeight / originalHeight;
+            const scale = Math.max(scaleW, scaleH);
+            
+            newWidth = originalWidth * scale;
+            newHeight = originalHeight * scale;
+        }
+        
+        // 步骤3：根据corner确定新角位置（固定方向）
+        let newCornerX, newCornerY;
+        
+        if (corner === 'topLeft') {
+            newCornerX = fixedPoint.x - newWidth;
+            newCornerY = fixedPoint.y + newHeight;
+        } else if (corner === 'topRight') {
+            newCornerX = fixedPoint.x + newWidth;
+            newCornerY = fixedPoint.y + newHeight;
+        } else if (corner === 'bottomRight') {
+            newCornerX = fixedPoint.x + newWidth;
+            newCornerY = fixedPoint.y - newHeight;
+        } else { // bottomLeft
+            newCornerX = fixedPoint.x - newWidth;
+            newCornerY = fixedPoint.y - newHeight;
+        }
+        
+        // 步骤4：新中心
+        const newCenterX = (fixedPoint.x + newCornerX) / 2;
+        const newCenterY = (fixedPoint.y + newCornerY) / 2;
+        
+        // 步骤5：缩放起点和终点
+        const scaleX = originalWidth > 0 ? newWidth / originalWidth : 1;
+        const scaleY = originalHeight > 0 ? newHeight / originalHeight : 1;
+        
+        const newStart = [
+            newCenterX + (start.x - center.x) * scaleX,
+            newCenterY + (start.y - center.y) * scaleY,
+            0
+        ];
+        const newEnd = [
+            newCenterX + (end.x - center.x) * scaleX,
+            newCenterY + (end.y - center.y) * scaleY,
+            0
+        ];
+        
+        return { start: newStart, end: newEnd };
+    },
+    
+    getMoveAnchor: function(element) {
+        // line：使用增量移动，返回null
+        return null;
+    },
+    
+    handleMove: function(element, moveInfo, editor) {
+        // line的移动：平移起点和终点
+        if (moveInfo.deltaX !== undefined && moveInfo.deltaY !== undefined) {
+            return {
+                start: [
+                    element.props.start[0] + moveInfo.deltaX,
+                    element.props.start[1] + moveInfo.deltaY,
+                    0
+                ],
+                end: [
+                    element.props.end[0] + moveInfo.deltaX,
+                    element.props.end[1] + moveInfo.deltaY,
+                    0
+                ]
+            };
+        }
+        return {};
     },
     
     properties: [

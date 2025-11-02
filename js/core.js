@@ -38,10 +38,6 @@ const ManimEditor = {
     drawStart: null,
     tempElement: null,
     
-    // 曲线绘制状态
-    curvePoints: [],       // 正在绘制的曲线控制点
-    isCurveDrawing: false, // 是否正在绘制曲线
-    
     // Manim坐标系参数（Y轴向上）
     canvasToManim: function(canvasX, canvasY) {
         const centerX = this.canvas.width / 2;
@@ -64,6 +60,70 @@ const ManimEditor = {
     // 生成唯一ID
     generateId: function() {
         return 'elem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    },
+    
+    // ═══════════════════════════════════════════
+    // 缩放辅助函数（插件系统）
+    // ═══════════════════════════════════════════
+    scaleHelpers: {
+        /**
+         * 获取固定点（对角点）的Manim坐标
+         */
+        getFixedPoint: function(corner, center, width, height) {
+            const halfW = width / 2;
+            const halfH = height / 2;
+            
+            const fixedPoints = {
+                'topLeft': { x: center.x + halfW, y: center.y - halfH },
+                'topRight': { x: center.x - halfW, y: center.y - halfH },
+                'bottomRight': { x: center.x - halfW, y: center.y + halfH },
+                'bottomLeft': { x: center.x + halfW, y: center.y + halfH }
+            };
+            
+            return fixedPoints[corner];
+        },
+        
+        /**
+         * 计算新角位置的Manim坐标
+         */
+        getNewCornerPosition: function(corner, fixedPoint, newWidth, newHeight) {
+            const positions = {
+                'topLeft': { 
+                    x: fixedPoint.x - newWidth, 
+                    y: fixedPoint.y + newHeight 
+                },
+                'topRight': { 
+                    x: fixedPoint.x + newWidth, 
+                    y: fixedPoint.y + newHeight 
+                },
+                'bottomRight': { 
+                    x: fixedPoint.x + newWidth, 
+                    y: fixedPoint.y - newHeight 
+                },
+                'bottomLeft': { 
+                    x: fixedPoint.x - newWidth, 
+                    y: fixedPoint.y - newHeight 
+                }
+            };
+            
+            return positions[corner];
+        },
+        
+        /**
+         * 保持宽高比
+         */
+        maintainAspectRatio: function(newWidth, newHeight, originalWidth, originalHeight) {
+            const originalRatio = originalWidth / originalHeight;
+            const scaleW = newWidth / originalWidth;
+            const scaleH = newHeight / originalHeight;
+            const scale = Math.max(scaleW, scaleH);
+            
+            return {
+                width: originalWidth * scale,
+                height: originalHeight * scale,
+                scale: scale
+            };
+        }
     }
 };
 
@@ -77,18 +137,40 @@ function registerShape(config) {
         return;
     }
     
+    // 插件化v2.0：复制所有配置项（而不是只复制部分）
     ManimEditor.shapeRegistry[config.type] = {
+        // 基础信息
         type: config.type,
         name: config.name || config.type,
         icon: config.icon || '■',
+        version: config.version || '1.0.0',
+        
+        // 必需方法
         createDefault: config.createDefault,
         render: config.render,
         toManim: config.toManim,
         hitTest: config.hitTest || defaultHitTest,
-        properties: config.properties || []
+        
+        // v2.0新增方法
+        getBounds: config.getBounds,
+        handleScale: config.handleScale,
+        handleMove: config.handleMove,
+        getMoveAnchor: config.getMoveAnchor,  // v2.1新增
+        updateWhileDrawing: config.updateWhileDrawing,
+        getControlPoints: config.getControlPoints,
+        updateControlPoint: config.updateControlPoint,
+        
+        // 配置
+        properties: config.properties || [],
+        capabilities: config.capabilities || {},
+        drawMode: config.drawMode || 'drag',
+        
+        // 导出相关
+        toJSON: config.toJSON,
+        fromJSON: config.fromJSON
     };
     
-    console.log(`Registered shape plugin: ${config.type}`);
+    console.log(`Registered shape plugin: ${config.type} v${config.version || '1.0.0'}`);
 }
 
 /**
@@ -157,11 +239,6 @@ function render() {
         }
     });
     
-    // 绘制正在绘制中的曲线
-    if (ManimEditor.isCurveDrawing && ManimEditor.curvePoints.length > 0) {
-        drawCurvePreview(ctx, ManimEditor);
-    }
-    
     // 绘制临时元素（正在绘制中）
     if (ManimEditor.tempElement) {
         const plugin = ManimEditor.shapeRegistry[ManimEditor.tempElement.type];
@@ -223,176 +300,28 @@ function drawOrigin(ctx, canvas) {
     ctx.fillText('(0,0)', centerX + 5, centerY - 5);
 }
 
-/**
- * 绘制曲线绘制预览
- */
-function drawCurvePreview(ctx, editor) {
-    const points = editor.curvePoints;
-    const previewPoint = editor.curvePreviewPoint;
-    
-    ctx.strokeStyle = '#9b59b6';
-    ctx.fillStyle = '#9b59b6';
-    ctx.lineWidth = 2;
-    
-    // 绘制已放置的点
-    points.forEach((point, index) => {
-        const canvasPoint = editor.manimToCanvas(point[0], point[1]);
-        
-        // 绘制点
-        ctx.beginPath();
-        ctx.arc(canvasPoint.x, canvasPoint.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // 绘制标签
-        ctx.fillStyle = '#2c3e50';
-        ctx.font = '12px monospace';
-        ctx.fillText(`P${index}`, canvasPoint.x + 10, canvasPoint.y - 10);
-        ctx.fillStyle = '#9b59b6';
-    });
-    
-    // 绘制连接线
-    if (points.length > 1) {
-        ctx.strokeStyle = '#bdc3c7';
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath();
-        const firstPoint = editor.manimToCanvas(points[0][0], points[0][1]);
-        ctx.moveTo(firstPoint.x, firstPoint.y);
-        for (let i = 1; i < points.length; i++) {
-            const p = editor.manimToCanvas(points[i][0], points[i][1]);
-            ctx.lineTo(p.x, p.y);
-        }
-        if (previewPoint) {
-            const preview = editor.manimToCanvas(previewPoint[0], previewPoint[1]);
-            ctx.lineTo(preview.x, preview.y);
-        }
-        ctx.stroke();
-        ctx.setLineDash([]);
-    }
-    
-    // 绘制预览点
-    if (previewPoint && points.length < 4) {
-        const canvasPoint = editor.manimToCanvas(previewPoint[0], previewPoint[1]);
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        ctx.arc(canvasPoint.x, canvasPoint.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        
-        // 标签
-        ctx.fillStyle = '#7f8c8d';
-        ctx.font = '12px monospace';
-        ctx.fillText(`P${points.length}`, canvasPoint.x + 10, canvasPoint.y - 10);
-    }
-    
-    // 绘制已有的曲线预览
-    if (points.length >= 2) {
-        ctx.strokeStyle = '#9b59b6';
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.6;
-        
-        const tempPoints = [...points];
-        if (previewPoint && points.length < 4) {
-            tempPoints.push(previewPoint);
-        }
-        
-        // 补全4个点（用于预览）
-        while (tempPoints.length < 4) {
-            tempPoints.push(tempPoints[tempPoints.length - 1]);
-        }
-        
-        drawBezierCurve(ctx, tempPoints, editor);
-        ctx.globalAlpha = 1;
-    }
-    
-    // 显示提示信息
-    ctx.fillStyle = '#2c3e50';
-    ctx.font = '14px sans-serif';
-    const messages = [
-        '点击放置起点 P0',
-        '点击放置控制点 P1',
-        '点击放置控制点 P2',
-        '点击放置终点 P3'
-    ];
-    ctx.fillText(messages[points.length] || '曲线完成', 20, editor.canvas.height - 20);
-}
+// ═══════════════════════════════════════════
+// 注意：drawCurvePreview和drawBezierCurve已移除
+// 原因：这是curve插件特有的逻辑，不应该在框架层
+// curve的点击式绘制应该通过插件接口实现
+// ═══════════════════════════════════════════
 
 /**
- * 绘制贝塞尔曲线
- */
-function drawBezierCurve(ctx, points, editor) {
-    if (points.length < 2) return;
-    
-    const p0 = editor.manimToCanvas(points[0][0], points[0][1]);
-    const p1 = editor.manimToCanvas(points[1][0], points[1][1]);
-    const p2 = points.length > 2 ? editor.manimToCanvas(points[2][0], points[2][1]) : p1;
-    const p3 = points.length > 3 ? editor.manimToCanvas(points[3][0], points[3][1]) : p2;
-    
-    ctx.beginPath();
-    ctx.moveTo(p0.x, p0.y);
-    ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-    ctx.stroke();
-}
-
-/**
- * 绘制选择框
+ * 绘制选择框 - 调用插件方法（插件化v2.0）
  */
 function drawSelectionBox(ctx, element) {
-    const props = element.props;
+    // 关键修复：使用插件的getBounds方法！
+    const plugin = ManimEditor.shapeRegistry[element.type];
     let bounds;
     
-    // 根据形状类型计算边界框
-    if (element.type === 'rectangle') {
-        const pos = ManimEditor.manimToCanvas(props.x, props.y);
-        const w = (props.width || 2) * 50;
-        const h = (props.height || 1) * 50;
-        bounds = { x: pos.x - w/2, y: pos.y - h/2, w, h };
-    } else if (element.type === 'square') {
-        const pos = ManimEditor.manimToCanvas(props.x, props.y);
-        const size = (props.size || 1) * 50;
-        bounds = { x: pos.x - size/2, y: pos.y - size/2, w: size, h: size };
-    } else if (element.type === 'arrow' || element.type === 'line') {
-        // 线条和箭头：计算起点终点的包围盒
-        const start = ManimEditor.manimToCanvas(props.start[0], props.start[1]);
-        const end = ManimEditor.manimToCanvas(props.end[0], props.end[1]);
-        const minX = Math.min(start.x, end.x);
-        const minY = Math.min(start.y, end.y);
-        const maxX = Math.max(start.x, end.x);
-        const maxY = Math.max(start.y, end.y);
-        const padding = 10;
-        bounds = { 
-            x: minX - padding, 
-            y: minY - padding, 
-            w: maxX - minX + padding * 2, 
-            h: maxY - minY + padding * 2 
-        };
-    } else if (element.type === 'curve') {
-        // 曲线：计算所有控制点的包围盒
-        const points = props.points || [];
-        if (points.length > 0) {
-            const canvasPoints = points.map(p => ManimEditor.manimToCanvas(p[0], p[1]));
-            const minX = Math.min(...canvasPoints.map(p => p.x));
-            const minY = Math.min(...canvasPoints.map(p => p.y));
-            const maxX = Math.max(...canvasPoints.map(p => p.x));
-            const maxY = Math.max(...canvasPoints.map(p => p.y));
-            const padding = 10;
-            bounds = { 
-                x: minX - padding, 
-                y: minY - padding, 
-                w: maxX - minX + padding * 2, 
-                h: maxY - minY + padding * 2 
-            };
-        } else {
-            const pos = ManimEditor.manimToCanvas(props.x || 0, props.y || 0);
-            bounds = { x: pos.x - 30, y: pos.y - 30, w: 60, h: 60 };
-        }
-    } else if (element.type === 'coordinateSystem') {
-        const pos = ManimEditor.manimToCanvas(props.x, props.y);
-        const w = (props.x_length || 6) * 50;
-        const h = (props.y_length || 6) * 50;
-        bounds = { x: pos.x - w/2, y: pos.y - h/2, w, h };
-    } else {
-        // 默认
-        const pos = ManimEditor.manimToCanvas(props.x || 0, props.y || 0);
+    if (plugin && plugin.getBounds) {
+        bounds = plugin.getBounds(element, ManimEditor);
+    }
+    
+    // 如果插件未提供getBounds或返回null，使用默认
+    if (!bounds) {
+        console.warn(`drawSelectionBox: 未找到${element.type}的bounds，使用默认`);
+        const pos = ManimEditor.manimToCanvas(element.props.x || 0, element.props.y || 0);
         bounds = { x: pos.x - 30, y: pos.y - 30, w: 60, h: 60 };
     }
     

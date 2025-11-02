@@ -25,6 +25,8 @@ function initToolbox() {
         const btn = document.createElement('button');
         btn.className = 'tool-btn';
         btn.setAttribute('data-shape-type', plugin.type);
+        btn.setAttribute('data-tooltip', plugin.name);  // 用于hover提示
+        btn.setAttribute('title', plugin.name);  // 浏览器原生tooltip（备用）
         
         btn.innerHTML = `
             <span class="icon">${plugin.icon}</span>
@@ -114,49 +116,36 @@ function initCanvasEvents() {
                 // 拖动缩放手柄
                 handleScaleDrag(dragElement, dragOffset, manimCoord);
             } else if (dragOffset.type === 'move') {
-                // 移动元素
-                if (dragElement.type === 'arrow' || dragElement.type === 'line') {
-                    // 箭头和线段：平移起点和终点
-                    const dx = manimCoord.x - dragOffset.x;
-                    const dy = manimCoord.y - dragOffset.y;
+                // 移动元素 - 调用插件方法
+                const plugin = ManimEditor.shapeRegistry[dragElement.type];
+                
+                if (plugin && plugin.handleMove) {
+                    // 准备移动信息
+                    // 对于有lastX/lastY的（arrow/line/curve），使用增量方式
+                    // 对于普通的，使用offset方式
+                    const moveInfo = {
+                        currentPoint: manimCoord,
+                        offset: { x: dragOffset.x, y: dragOffset.y }
+                    };
                     
-                    const newStart = [
-                        dragElement.props.start[0] + dx - dragOffset.lastX,
-                        dragElement.props.start[1] + dy - dragOffset.lastY,
-                        0
-                    ];
-                    const newEnd = [
-                        dragElement.props.end[0] + dx - dragOffset.lastX,
-                        dragElement.props.end[1] + dy - dragOffset.lastY,
-                        0
-                    ];
+                    // 计算增量（for arrow/line/curve）
+                    if (dragOffset.lastX !== undefined) {
+                        const dx = manimCoord.x - dragOffset.x;
+                        const dy = manimCoord.y - dragOffset.y;
+                        moveInfo.deltaX = dx - dragOffset.lastX;
+                        moveInfo.deltaY = dy - dragOffset.lastY;
+                    }
                     
-                    updateElement(dragElement.id, {
-                        start: newStart,
-                        end: newEnd
-                    });
+                    const newProps = plugin.handleMove(dragElement, moveInfo, ManimEditor);
+                    updateElement(dragElement.id, newProps);
                     
-                    dragOffset.lastX = dx;
-                    dragOffset.lastY = dy;
-                } else if (dragElement.type === 'curve') {
-                    // 曲线：平移所有控制点
-                    const dx = manimCoord.x - dragOffset.x;
-                    const dy = manimCoord.y - dragOffset.y;
-                    
-                    const newPoints = dragElement.props.points.map(p => [
-                        p[0] + dx - dragOffset.lastX,
-                        p[1] + dy - dragOffset.lastY,
-                        0
-                    ]);
-                    
-                    updateElement(dragElement.id, {
-                        points: newPoints
-                    });
-                    
-                    dragOffset.lastX = dx;
-                    dragOffset.lastY = dy;
+                    // 更新lastX/lastY
+                    if (dragOffset.lastX !== undefined) {
+                        dragOffset.lastX = manimCoord.x - dragOffset.x;
+                        dragOffset.lastY = manimCoord.y - dragOffset.y;
+                    }
                 } else {
-                    // 其他元素：移动中心点
+                    // 默认：移动中心点
                     updateElement(dragElement.id, {
                         x: manimCoord.x - dragOffset.x,
                         y: manimCoord.y - dragOffset.y
@@ -211,14 +200,26 @@ function initCanvasEvents() {
                         originalProps: JSON.parse(JSON.stringify(element.props))
                     };
                 } else if (controlPoint.type === 'scaleHandle') {
+                    // 缩放手柄
+                    const originalProps = JSON.parse(JSON.stringify(element.props));
+                    
+                    // 关键修复：在mousedown时就计算并缓存fixedPoint
+                    const fixedPoint = calculateFixedPoint(element, controlPoint.corner, originalProps);
+                    
                     dragOffset = {
                         type: 'scaleHandle',
                         corner: controlPoint.corner,
                         startX: manimCoord.x,
                         startY: manimCoord.y,
-                        originalProps: JSON.parse(JSON.stringify(element.props))
+                        originalProps: originalProps,
+                        fixedPoint: fixedPoint  // 在mousedown时就缓存！
                     };
-                    console.log(`准备缩放: corner=${controlPoint.corner}`);
+                    console.log(`准备缩放: corner=${controlPoint.corner}, fixedPoint=`, fixedPoint);
+                    
+                    // 调试日志
+                    if (window.debugScale) {
+                        window.debugScale.log('mousedown', { fixedPoint, corner: controlPoint.corner });
+                    }
                 }
                 
                 render();
@@ -230,15 +231,12 @@ function initCanvasEvents() {
                 dragElement = clickedElement;
                 isDragging = true;
                 
-                if (clickedElement.type === 'arrow' || clickedElement.type === 'line') {
-                    dragOffset = {
-                        type: 'move',
-                        x: manimCoord.x,
-                        y: manimCoord.y,
-                        lastX: 0,
-                        lastY: 0
-                    };
-                } else if (clickedElement.type === 'curve') {
+                // 插件化：调用插件方法获取移动锚点
+                const plugin = ManimEditor.shapeRegistry[clickedElement.type];
+                const anchor = plugin && plugin.getMoveAnchor ? plugin.getMoveAnchor(clickedElement) : null;
+                
+                if (anchor === null) {
+                    // null表示使用增量移动（arrow/line/curve）
                     dragOffset = {
                         type: 'move',
                         x: manimCoord.x,
@@ -247,10 +245,11 @@ function initCanvasEvents() {
                         lastY: 0
                     };
                 } else {
+                    // 使用锚点移动（rectangle/square/circle/parabola等）
                     dragOffset = {
                         type: 'move',
-                        x: manimCoord.x - clickedElement.props.x,
-                        y: manimCoord.y - clickedElement.props.y
+                        x: manimCoord.x - anchor.x,
+                        y: manimCoord.y - anchor.y
                     };
                 }
                 
@@ -264,11 +263,7 @@ function initCanvasEvents() {
         // ═══════════════════════════════════════════
         if (ManimEditor.mode === 'draw') {
             // 绘制模式：开始绘制新元素
-            if (ManimEditor.currentShapeType === 'curve') {
-                handleCurveClick(canvasX, canvasY);
-            } else {
-                startDrawing(canvasX, canvasY);
-            }
+             startDrawing(canvasX, canvasY);
             return;
         }
         
@@ -284,15 +279,12 @@ function initCanvasEvents() {
             dragElement = clickedElement;
             isDragging = true;
             
-            if (clickedElement.type === 'arrow' || clickedElement.type === 'line') {
-                dragOffset = {
-                    type: 'move',
-                    x: manimCoord.x,
-                    y: manimCoord.y,
-                    lastX: 0,
-                    lastY: 0
-                };
-            } else if (clickedElement.type === 'curve') {
+            // 插件化：调用插件方法获取移动锚点
+            const plugin = ManimEditor.shapeRegistry[clickedElement.type];
+            const anchor = plugin && plugin.getMoveAnchor ? plugin.getMoveAnchor(clickedElement) : null;
+            
+            if (anchor === null) {
+                // null表示使用增量移动
                 dragOffset = {
                     type: 'move',
                     x: manimCoord.x,
@@ -301,10 +293,11 @@ function initCanvasEvents() {
                     lastY: 0
                 };
             } else {
+                // 使用锚点移动
                 dragOffset = {
                     type: 'move',
-                    x: manimCoord.x - clickedElement.props.x,
-                    y: manimCoord.y - clickedElement.props.y
+                    x: manimCoord.x - anchor.x,
+                    y: manimCoord.y - anchor.y
                 };
             }
             
@@ -319,6 +312,11 @@ function initCanvasEvents() {
     
     // 鼠标释放
     canvas.addEventListener('mouseup', (e) => {
+        // 调试日志
+        if (window.debugScale && dragOffset && dragOffset.type === 'scaleHandle') {
+            window.debugScale.log('mouseup', {});
+        }
+        
         if (dragElement) {
             dragElement = null;
             dragOffset = { x: 0, y: 0 };
@@ -369,21 +367,26 @@ function findControlPoint(canvasX, canvasY, element) {
     const outerSize = 16; // 向外侧扩展（像素）
     const innerSize = 8;  // 向内侧扩展（像素）
     
-    // 对于曲线：优先检查曲线控制点（P0, P1, P2, P3），然后才检查缩放手柄
-    if (element.type === 'curve' && element.props.points) {
-        const curveThreshold = 12; // 曲线控制点使用圆形检测，容差12px
+    // 插件化：检查插件自定义的控制点
+    const plugin = ManimEditor.shapeRegistry[element.type];
+    if (plugin && plugin.getControlPoints) {
+        const controlPoints = plugin.getControlPoints(element, ManimEditor);
         
-        for (let i = 0; i < element.props.points.length; i++) {
-            const point = element.props.points[i];
-            const canvasPoint = ManimEditor.manimToCanvas(point[0], point[1]);
-            const distance = Math.sqrt(
-                Math.pow(canvasX - canvasPoint.x, 2) +
-                Math.pow(canvasY - canvasPoint.y, 2)
-            );
+        if (controlPoints && controlPoints.length > 0) {
+            const threshold = 12;
             
-            if (distance <= curveThreshold) {
-                console.log(`检测到曲线控制点: P${i}, 距离=${distance.toFixed(1)}px`);
-                return { type: 'curvePoint', index: i };
+            for (let i = 0; i < controlPoints.length; i++) {
+                const point = controlPoints[i];
+                const canvasPoint = ManimEditor.manimToCanvas(point.x, point.y);
+                const distance = Math.sqrt(
+                    Math.pow(canvasX - canvasPoint.x, 2) +
+                    Math.pow(canvasY - canvasPoint.y, 2)
+                );
+                
+                if (distance <= threshold) {
+                    console.log(`检测到控制点: ${point.id}, 距离=${distance.toFixed(1)}px`);
+                    return { type: 'curvePoint', index: i };
+                }
             }
         }
     }
@@ -442,413 +445,117 @@ function findControlPoint(canvasX, canvasY, element) {
 }
 
 /**
- * 获取元素的边界框（画布坐标）
+ * 获取元素的边界框（画布坐标）- 调用插件方法
  */
 function getElementBounds(element) {
-    const props = element.props;
+    const plugin = ManimEditor.shapeRegistry[element.type];
     
-    if (element.type === 'rectangle') {
-        const pos = ManimEditor.manimToCanvas(props.x, props.y);
-        const w = (props.width || 2) * 50;
-        const h = (props.height || 1) * 50;
-        return { x: pos.x - w/2, y: pos.y - h/2, w, h };
-    } else if (element.type === 'square') {
-        const pos = ManimEditor.manimToCanvas(props.x, props.y);
-        const size = (props.size || 1) * 50;
-        return { x: pos.x - size/2, y: pos.y - size/2, w: size, h: size };
-    } else if (element.type === 'arrow' || element.type === 'line') {
-        const start = ManimEditor.manimToCanvas(props.start[0], props.start[1]);
-        const end = ManimEditor.manimToCanvas(props.end[0], props.end[1]);
-        const minX = Math.min(start.x, end.x);
-        const minY = Math.min(start.y, end.y);
-        const maxX = Math.max(start.x, end.x);
-        const maxY = Math.max(start.y, end.y);
-        const padding = 10;
-        return { 
-            x: minX - padding, 
-            y: minY - padding, 
-            w: maxX - minX + padding * 2, 
-            h: maxY - minY + padding * 2 
-        };
-    } else if (element.type === 'curve') {
-        const points = props.points || [];
-        if (points.length > 0) {
-            const canvasPoints = points.map(p => ManimEditor.manimToCanvas(p[0], p[1]));
-            const minX = Math.min(...canvasPoints.map(p => p.x));
-            const minY = Math.min(...canvasPoints.map(p => p.y));
-            const maxX = Math.max(...canvasPoints.map(p => p.x));
-            const maxY = Math.max(...canvasPoints.map(p => p.y));
-            const padding = 10;
-            return { 
-                x: minX - padding, 
-                y: minY - padding, 
-                w: maxX - minX + padding * 2, 
-                h: maxY - minY + padding * 2 
-            };
-        }
-    } else if (element.type === 'coordinateSystem') {
-        const pos = ManimEditor.manimToCanvas(props.x, props.y);
-        const w = (props.x_length || 6) * 50;
-        const h = (props.y_length || 6) * 50;
-        return { x: pos.x - w/2, y: pos.y - h/2, w, h };
+    if (plugin && plugin.getBounds) {
+        return plugin.getBounds(element, ManimEditor);
     }
     
+    // 如果插件未实现getBounds，返回null
+    console.warn(`插件 ${element.type} 未实现 getBounds 方法`);
     return null;
 }
 
 /**
- * 处理缩放拖拽 - 对角不动策略（重构版）
+ * 处理缩放拖拽 - 调用插件方法（插件化v2.0）
  */
 function handleScaleDrag(element, dragOffset, currentCoord) {
-    const props = dragOffset.originalProps;
+    const plugin = ManimEditor.shapeRegistry[element.type];
+    
+    if (!plugin) {
+        console.error(`未找到插件: ${element.type}`);
+        return;
+    }
+    
     const corner = dragOffset.corner;
     const isShift = window.isShiftPressed || false;
     
-    console.log(`缩放: ${element.type}, 角: ${corner}, Shift: ${isShift}`);
+    // 准备缩放信息（fixedPoint已在mousedown时缓存）
+    const scaleInfo = {
+        corner: corner,
+        fixedPoint: dragOffset.fixedPoint,  // 使用mousedown时缓存的固定点
+        currentPoint: currentCoord,
+        isShift: window.isShiftPressed || false,
+        originalProps: dragOffset.originalProps
+    };
     
-    // ═══════════════════════════════════════════
-    // 正方形和矩形的缩放
-    // ═══════════════════════════════════════════
-    if (element.type === 'square' || element.type === 'rectangle') {
-        const center = { x: props.x, y: props.y };
-        const width = element.type === 'square' ? props.size : props.width;
-        const height = element.type === 'square' ? props.size : props.height;
-        const halfW = width / 2;
-        const halfH = height / 2;
-        
-        // 步骤1：确定固定点（Manim坐标）
-        // 注意：Manim中Y轴向上，top的y值大，bottom的y值小
-        let fixedX, fixedY;
-        
-        if (corner === 'topLeft') {
-            // 拖动左上（Manim: x小,y大），固定右下（Manim: x大,y小）
-            fixedX = center.x + halfW;
-            fixedY = center.y - halfH;
-        } else if (corner === 'topRight') {
-            // 拖动右上（Manim: x大,y大），固定左下（Manim: x小,y小）
-            fixedX = center.x - halfW;
-            fixedY = center.y - halfH;
-        } else if (corner === 'bottomRight') {
-            // 拖动右下（Manim: x大,y小），固定左上（Manim: x小,y大）
-            fixedX = center.x - halfW;
-            fixedY = center.y + halfH;
-        } else { // bottomLeft
-            // 拖动左下（Manim: x小,y小），固定右上（Manim: x大,y大）
-            fixedX = center.x + halfW;
-            fixedY = center.y + halfH;
-        }
-        
-        console.log(`固定点: (${fixedX.toFixed(2)}, ${fixedY.toFixed(2)})`);
-        
-        // 步骤2：计算新尺寸（从固定点到鼠标的距离）
-        let newWidth = Math.abs(currentCoord.x - fixedX);
-        let newHeight = Math.abs(currentCoord.y - fixedY);
-        
-        console.log(`初始新尺寸: ${newWidth.toFixed(2)} × ${newHeight.toFixed(2)}`);
-        
-        // 步骤3：处理等比例（正方形始终等比例，矩形按Shift）
-        if (element.type === 'square' || isShift) {
-            if (element.type === 'square') {
-                // 正方形：取最大值
-                const newSize = Math.max(newWidth, newHeight);
-                newWidth = newSize;
-                newHeight = newSize;
-            } else {
-                // 矩形按Shift：保持原始比例
-                const originalRatio = props.width / props.height;
-                const scaleW = newWidth / props.width;
-                const scaleH = newHeight / props.height;
-                const scale = Math.max(scaleW, scaleH);
-                
-                newWidth = props.width * scale;
-                newHeight = props.height * scale;
-            }
-            console.log(`等比例调整后: ${newWidth.toFixed(2)} × ${newHeight.toFixed(2)}`);
-        }
-        
-        // 步骤4：计算新的拖动角位置（实际的，不一定是鼠标位置）
-        let newCornerX, newCornerY;
-        
-        if (corner === 'topLeft') {
-            newCornerX = fixedX - newWidth;
-            newCornerY = fixedY + newHeight;
-        } else if (corner === 'topRight') {
-            newCornerX = fixedX + newWidth;
-            newCornerY = fixedY + newHeight;
-        } else if (corner === 'bottomRight') {
-            newCornerX = fixedX + newWidth;
-            newCornerY = fixedY - newHeight;
-        } else { // bottomLeft
-            newCornerX = fixedX - newWidth;
-            newCornerY = fixedY - newHeight;
-        }
-        
-        // 步骤5：新中心 = 固定点和新角位置的中点
-        const newCenterX = (fixedX + newCornerX) / 2;
-        const newCenterY = (fixedY + newCornerY) / 2;
-        
-        console.log(`新中心: (${newCenterX.toFixed(2)}, ${newCenterY.toFixed(2)})`);
-        
-        // 更新元素
-        if (element.type === 'square') {
-            updateElement(element.id, {
-                size: Math.max(0.1, newWidth),
-                x: newCenterX,
-                y: newCenterY
-            });
-        } else {
-            updateElement(element.id, {
-                width: Math.max(0.1, newWidth),
-                height: Math.max(0.1, newHeight),
-                x: newCenterX,
-                y: newCenterY
-            });
-        }
-        
-    } 
-    // ═══════════════════════════════════════════
-    // 箭头和线段的缩放
-    // ═══════════════════════════════════════════
-    else if (element.type === 'arrow' || element.type === 'line') {
-        const start = { x: props.start[0], y: props.start[1] };
-        const end = { x: props.end[0], y: props.end[1] };
-        const center = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-        
-        // 计算包围盒
-        const minX = Math.min(start.x, end.x);
-        const maxX = Math.max(start.x, end.x);
-        const minY = Math.min(start.y, end.y);
-        const maxY = Math.max(start.y, end.y);
-        const halfW = (maxX - minX) / 2;
-        const halfH = (maxY - minY) / 2;
-        
-        // 确定固定点
-        let fixedX, fixedY;
-        
-        if (corner === 'topLeft') {
-            fixedX = center.x + halfW;
-            fixedY = center.y - halfH;
-        } else if (corner === 'topRight') {
-            fixedX = center.x - halfW;
-            fixedY = center.y - halfH;
-        } else if (corner === 'bottomRight') {
-            fixedX = center.x - halfW;
-            fixedY = center.y + halfH;
-        } else {
-            fixedX = center.x + halfW;
-            fixedY = center.y + halfH;
-        }
-        
-        // 计算新尺寸
-        let newWidth = Math.abs(currentCoord.x - fixedX);
-        let newHeight = Math.abs(currentCoord.y - fixedY);
-        
-        // 等比例缩放
-        if (isShift && halfW > 0 && halfH > 0) {
-            const originalRatio = (maxX - minX) / (maxY - minY);
-            const scaleW = newWidth / (maxX - minX);
-            const scaleH = newHeight / (maxY - minY);
-            const scale = Math.max(scaleW, scaleH);
-            
-            newWidth = (maxX - minX) * scale;
-            newHeight = (maxY - minY) * scale;
-        }
-        
-        // 计算新角位置
-        let newCornerX, newCornerY;
-        if (corner === 'topLeft') {
-            newCornerX = fixedX - newWidth;
-            newCornerY = fixedY + newHeight;
-        } else if (corner === 'topRight') {
-            newCornerX = fixedX + newWidth;
-            newCornerY = fixedY + newHeight;
-        } else if (corner === 'bottomRight') {
-            newCornerX = fixedX + newWidth;
-            newCornerY = fixedY - newHeight;
-        } else {
-            newCornerX = fixedX - newWidth;
-            newCornerY = fixedY - newHeight;
-        }
-        
-        // 新中心
-        const newCenterX = (fixedX + newCornerX) / 2;
-        const newCenterY = (fixedY + newCornerY) / 2;
-        
-        // 计算缩放比例
-        const scaleX = (maxX - minX) > 0 ? newWidth / (maxX - minX) : 1;
-        const scaleY = (maxY - minY) > 0 ? newHeight / (maxY - minY) : 1;
-        
-        // 缩放起点和终点
-        const newStart = [
-            newCenterX + (start.x - center.x) * scaleX,
-            newCenterY + (start.y - center.y) * scaleY,
-            0
-        ];
-        const newEnd = [
-            newCenterX + (end.x - center.x) * scaleX,
-            newCenterY + (end.y - center.y) * scaleY,
-            0
-        ];
-        
-        updateElement(element.id, {
-            start: newStart,
-            end: newEnd
-        });
-        
-    } 
-    // ═══════════════════════════════════════════
-    // 曲线的缩放
-    // ═══════════════════════════════════════════
-    else if (element.type === 'curve') {
-        const points = props.points;
-        if (!points || points.length === 0) return;
-        
-        // 计算包围盒和中心
-        const xs = points.map(p => p[0]);
-        const ys = points.map(p => p[1]);
-        const minX = Math.min(...xs);
-        const maxX = Math.max(...xs);
-        const minY = Math.min(...ys);
-        const maxY = Math.max(...ys);
-        const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-        const halfW = (maxX - minX) / 2;
-        const halfH = (maxY - minY) / 2;
-        
-        // 确定固定点
-        let fixedX, fixedY;
-        
-        if (corner === 'topLeft') {
-            fixedX = center.x + halfW;
-            fixedY = center.y - halfH;
-        } else if (corner === 'topRight') {
-            fixedX = center.x - halfW;
-            fixedY = center.y - halfH;
-        } else if (corner === 'bottomRight') {
-            fixedX = center.x - halfW;
-            fixedY = center.y + halfH;
-        } else {
-            fixedX = center.x + halfW;
-            fixedY = center.y + halfH;
-        }
-        
-        // 计算新尺寸
-        let newWidth = Math.abs(currentCoord.x - fixedX);
-        let newHeight = Math.abs(currentCoord.y - fixedY);
-        
-        // 等比例缩放
-        if (isShift && halfW > 0 && halfH > 0) {
-            const originalRatio = (maxX - minX) / (maxY - minY);
-            const scaleW = newWidth / (maxX - minX);
-            const scaleH = newHeight / (maxY - minY);
-            const scale = Math.max(scaleW, scaleH);
-            
-            newWidth = (maxX - minX) * scale;
-            newHeight = (maxY - minY) * scale;
-        }
-        
-        // 计算新角位置
-        let newCornerX, newCornerY;
-        if (corner === 'topLeft') {
-            newCornerX = fixedX - newWidth;
-            newCornerY = fixedY + newHeight;
-        } else if (corner === 'topRight') {
-            newCornerX = fixedX + newWidth;
-            newCornerY = fixedY + newHeight;
-        } else if (corner === 'bottomRight') {
-            newCornerX = fixedX + newWidth;
-            newCornerY = fixedY - newHeight;
-        } else {
-            newCornerX = fixedX - newWidth;
-            newCornerY = fixedY - newHeight;
-        }
-        
-        // 新中心
-        const newCenterX = (fixedX + newCornerX) / 2;
-        const newCenterY = (fixedY + newCornerY) / 2;
-        
-        // 计算缩放比例
-        const scaleX = (maxX - minX) > 0 ? newWidth / (maxX - minX) : 1;
-        const scaleY = (maxY - minY) > 0 ? newHeight / (maxY - minY) : 1;
-        
-        // 缩放所有控制点
-        const newPoints = points.map(p => [
-            newCenterX + (p[0] - center.x) * scaleX,
-            newCenterY + (p[1] - center.y) * scaleY,
-            0
-        ]);
-        
-        updateElement(element.id, {
-            points: newPoints
-        });
-        
-    } 
-    // ═══════════════════════════════════════════
-    // 坐标系的缩放
-    // ═══════════════════════════════════════════
-    else if (element.type === 'coordinateSystem') {
-        const center = { x: props.x, y: props.y };
-        const halfW = props.x_length / 2;
-        const halfH = props.y_length / 2;
-        
-        // 确定固定点
-        let fixedX, fixedY;
-        
-        if (corner === 'topLeft') {
-            fixedX = center.x + halfW;
-            fixedY = center.y - halfH;
-        } else if (corner === 'topRight') {
-            fixedX = center.x - halfW;
-            fixedY = center.y - halfH;
-        } else if (corner === 'bottomRight') {
-            fixedX = center.x - halfW;
-            fixedY = center.y + halfH;
-        } else {
-            fixedX = center.x + halfW;
-            fixedY = center.y + halfH;
-        }
-        
-        // 计算新轴长度
-        let newXLength = Math.abs(currentCoord.x - fixedX);
-        let newYLength = Math.abs(currentCoord.y - fixedY);
-        
-        // 等比例缩放
-        if (isShift) {
-            const originalRatio = props.x_length / props.y_length;
-            const scaleX = newXLength / props.x_length;
-            const scaleY = newYLength / props.y_length;
-            const scale = Math.max(scaleX, scaleY);
-            
-            newXLength = props.x_length * scale;
-            newYLength = props.y_length * scale;
-        }
-        
-        // 计算新角位置
-        let newCornerX, newCornerY;
-        if (corner === 'topLeft') {
-            newCornerX = fixedX - newXLength;
-            newCornerY = fixedY + newYLength;
-        } else if (corner === 'topRight') {
-            newCornerX = fixedX + newXLength;
-            newCornerY = fixedY + newYLength;
-        } else if (corner === 'bottomRight') {
-            newCornerX = fixedX + newXLength;
-            newCornerY = fixedY - newYLength;
-        } else {
-            newCornerX = fixedX - newXLength;
-            newCornerY = fixedY - newYLength;
-        }
-        
-        // 新中心
-        const newX = (fixedX + newCornerX) / 2;
-        const newY = (fixedY + newCornerY) / 2;
-        
-        updateElement(element.id, {
-            x_length: Math.max(1, newXLength),
-            y_length: Math.max(1, newYLength),
-            x: newX,
-            y: newY
+    // 调试日志
+    if (window.debugScale) {
+        window.debugScale.log('mousemove', { 
+            fixedPoint: scaleInfo.fixedPoint, 
+            currentPoint: scaleInfo.currentPoint 
         });
     }
+    
+    // 调用插件的缩放处理
+    if (plugin.handleScale) {
+        const newProps = plugin.handleScale(element, scaleInfo, ManimEditor);
+        updateElement(element.id, newProps);
+    } else {
+        console.warn(`插件 ${element.type} 未实现 handleScale 方法`);
+    }
+}
+
+/**
+ * 计算固定点（对角点）- 使用原始props
+ */
+function calculateFixedPoint(element, corner, originalProps) {
+    const plugin = ManimEditor.shapeRegistry[element.type];
+    
+    if (!plugin || !plugin.getBounds) {
+        console.error(`插件 ${element.type} 未实现 getBounds，无法计算固定点`);
+        return { x: 0, y: 0 };
+    }
+    
+    // 关键：使用originalProps创建临时元素来计算bounds
+    const tempElement = {
+        type: element.type,
+        id: element.id,
+        name: element.name,
+        props: originalProps  // 使用原始props，不是当前props！
+    };
+    
+    console.log(`[calculateFixedPoint] corner=${corner}, originalProps=`, originalProps);
+    
+    // 使用原始状态的bounds计算固定点
+    const bounds = plugin.getBounds(tempElement, ManimEditor);
+    if (!bounds) {
+        console.error(`getBounds返回null`);
+        return { x: 0, y: 0 };
+    }
+    
+    console.log(`[calculateFixedPoint] bounds=`, bounds);
+    
+    // 从Canvas bounds的四个角计算对应的Manim固定点
+    // 注意：拖动某个角时，固定的是对角
+    const allCorners = {
+        topLeft: ManimEditor.canvasToManim(bounds.x, bounds.y),
+        topRight: ManimEditor.canvasToManim(bounds.x + bounds.w, bounds.y),
+        bottomLeft: ManimEditor.canvasToManim(bounds.x, bounds.y + bounds.h),
+        bottomRight: ManimEditor.canvasToManim(bounds.x + bounds.w, bounds.y + bounds.h)
+    };
+    
+    console.log(`[calculateFixedPoint] 所有角(Manim坐标)=`, allCorners);
+    
+    // 对角映射
+    const fixedCorners = {
+        // 拖动左上 → 固定右下
+        'topLeft': allCorners.bottomRight,
+        // 拖动右上 → 固定左下
+        'topRight': allCorners.bottomLeft,
+        // 拖动右下 → 固定左上
+        'bottomRight': allCorners.topLeft,
+        // 拖动左下 → 固定右上
+        'bottomLeft': allCorners.topRight
+    };
+    
+    const result = fixedCorners[corner] || { x: 0, y: 0 };
+    console.log(`[calculateFixedPoint] 拖动${corner} → 固定点=`, result);
+    
+    return result;
 }
 
 /**
@@ -930,53 +637,34 @@ function startDrawing(canvasX, canvasY) {
 }
 
 /**
- * 更新临时元素
+ * 更新临时元素 - 调用插件方法（插件化v2.0）
  */
 function updateTempElement(canvasX, canvasY) {
     if (!ManimEditor.tempElement || !ManimEditor.drawStart) return;
     
+    const plugin = ManimEditor.shapeRegistry[ManimEditor.tempElement.type];
+    
+    if (!plugin) {
+        console.error(`未找到插件: ${ManimEditor.tempElement.type}`);
+        return;
+    }
+    
+    // 准备坐标信息
     const manimCoord = ManimEditor.canvasToManim(canvasX, canvasY);
     const startCoord = ManimEditor.drawStart;
+    const currentCoord = {
+        canvasX: canvasX,
+        canvasY: canvasY,
+        manimX: manimCoord.x,
+        manimY: manimCoord.y
+    };
     
-    const type = ManimEditor.tempElement.type;
-    
-    // 根据形状类型更新临时元素
-    if (type === 'square' || type === 'rectangle') {
-        const width = Math.abs(manimCoord.x - startCoord.manimX);
-        const height = Math.abs(manimCoord.y - startCoord.manimY);
-        const centerX = (manimCoord.x + startCoord.manimX) / 2;
-        const centerY = (manimCoord.y + startCoord.manimY) / 2;
-        
-        ManimEditor.tempElement.props.x = centerX;
-        ManimEditor.tempElement.props.y = centerY;
-        
-        if (type === 'square') {
-            ManimEditor.tempElement.props.size = Math.max(width, height);
-        } else {
-            ManimEditor.tempElement.props.width = width;
-            ManimEditor.tempElement.props.height = height;
-        }
-    } else if (type === 'arrow' || type === 'line') {
-        ManimEditor.tempElement.props.start = [startCoord.manimX, startCoord.manimY, 0];
-        ManimEditor.tempElement.props.end = [manimCoord.x, manimCoord.y, 0];
-    } else if (type === 'curve') {
-        // 曲线：使用起点和终点创建简单的两点曲线
-        ManimEditor.tempElement.props.points = [
-            [startCoord.manimX, startCoord.manimY, 0],
-            [(startCoord.manimX + manimCoord.x) / 2, (startCoord.manimY + manimCoord.y) / 2, 0],
-            [manimCoord.x, manimCoord.y, 0]
-        ];
-    } else if (type === 'coordinateSystem') {
-        // 坐标系：根据拖动距离调整大小
-        const width = Math.abs(manimCoord.x - startCoord.manimX);
-        const height = Math.abs(manimCoord.y - startCoord.manimY);
-        const centerX = (manimCoord.x + startCoord.manimX) / 2;
-        const centerY = (manimCoord.y + startCoord.manimY) / 2;
-        
-        ManimEditor.tempElement.props.x = centerX;
-        ManimEditor.tempElement.props.y = centerY;
-        ManimEditor.tempElement.props.x_length = Math.max(width * 2, 2);
-        ManimEditor.tempElement.props.y_length = Math.max(height * 2, 2);
+    // 调用插件的拖动更新方法
+    if (plugin.updateWhileDrawing) {
+        console.log(`[绘制] 调用 ${ManimEditor.tempElement.type}.updateWhileDrawing`);
+        plugin.updateWhileDrawing(ManimEditor.tempElement, startCoord, currentCoord, ManimEditor);
+    } else {
+        console.warn(`[绘制] 插件 ${ManimEditor.tempElement.type} 未实现 updateWhileDrawing`);
     }
     
     render();
@@ -1266,15 +954,13 @@ function initToolbarButtons() {
     // 删除
     document.getElementById('delete-btn')?.addEventListener('click', deleteSelectedElement);
     
-    // 清空
+    // 清空（不需要确认）
     document.getElementById('clear-btn')?.addEventListener('click', () => {
-        if (confirm('确定要清空所有图形吗？此操作不可撤销。')) {
-            ManimEditor.elements = [];
-            ManimEditor.selectedElement = null;
-            hidePropertyPanel();
-            saveToHistory();
-            render();
-        }
+        ManimEditor.elements = [];
+        ManimEditor.selectedElement = null;
+        hidePropertyPanel();
+        saveToHistory();
+        render();
     });
     
     // 导出Manim代码

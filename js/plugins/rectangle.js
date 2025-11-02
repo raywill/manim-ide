@@ -6,6 +6,7 @@ registerShape({
     type: 'rectangle',
     name: '矩形',
     icon: '▭',
+    version: '2.0.1-migrated',  // 版本标记，用于验证是否加载新代码
     
     createDefault: function(x, y) {
         return {
@@ -77,6 +78,89 @@ registerShape({
         }
         
         return code;
+    },
+    
+    // ═══════════════════════════════════════════
+    // 插件化v2.0新增方法
+    // ═══════════════════════════════════════════
+    
+    getBounds: function(element, editor) {
+        const props = element.props;
+        const pos = editor.manimToCanvas(props.x, props.y);
+        const w = (props.width || 2) * 50;
+        const h = (props.height || 1) * 50;
+        return { x: pos.x - w/2, y: pos.y - h/2, w, h };
+    },
+    
+    updateWhileDrawing: function(element, start, current, editor) {
+        const width = Math.abs(current.manimX - start.manimX);
+        const height = Math.abs(current.manimY - start.manimY);
+        const centerX = (current.manimX + start.manimX) / 2;
+        const centerY = (current.manimY + start.manimY) / 2;
+        
+        element.props.width = width;
+        element.props.height = height;
+        element.props.x = centerX;
+        element.props.y = centerY;
+    },
+    
+    handleScale: function(element, scaleInfo, editor) {
+        const { corner, fixedPoint, currentPoint, isShift, originalProps } = scaleInfo;
+        
+        // 步骤1：计算新尺寸（绝对值）
+        let newWidth = Math.abs(currentPoint.x - fixedPoint.x);
+        let newHeight = Math.abs(currentPoint.y - fixedPoint.y);
+        
+        // 步骤2：等比例调整
+        if (isShift) {
+            const originalRatio = originalProps.width / originalProps.height;
+            const scaleW = newWidth / originalProps.width;
+            const scaleH = newHeight / originalProps.height;
+            const scale = Math.max(scaleW, scaleH);
+            
+            newWidth = originalProps.width * scale;
+            newHeight = originalProps.height * scale;
+        }
+        
+        // 步骤3：根据corner确定新角位置（固定方向）
+        let newCornerX, newCornerY;
+        
+        if (corner === 'topLeft') {
+            newCornerX = fixedPoint.x - newWidth;
+            newCornerY = fixedPoint.y + newHeight;
+        } else if (corner === 'topRight') {
+            newCornerX = fixedPoint.x + newWidth;
+            newCornerY = fixedPoint.y + newHeight;
+        } else if (corner === 'bottomRight') {
+            newCornerX = fixedPoint.x + newWidth;
+            newCornerY = fixedPoint.y - newHeight;
+        } else { // bottomLeft
+            newCornerX = fixedPoint.x - newWidth;
+            newCornerY = fixedPoint.y - newHeight;
+        }
+        
+        // 步骤4：新中心 = (固定点 + 新角) / 2
+        const newCenterX = (fixedPoint.x + newCornerX) / 2;
+        const newCenterY = (fixedPoint.y + newCornerY) / 2;
+        
+        return {
+            width: Math.max(0.1, newWidth),
+            height: Math.max(0.1, newHeight),
+            x: newCenterX,
+            y: newCenterY
+        };
+    },
+    
+    getMoveAnchor: function(element) {
+        // 矩形：使用中心点作为锚点
+        return { x: element.props.x, y: element.props.y };
+    },
+    
+    handleMove: function(element, moveInfo, editor) {
+        return {
+            x: moveInfo.currentPoint.x - moveInfo.offset.x,
+            y: moveInfo.currentPoint.y - moveInfo.offset.y
+        };
     },
     
     properties: [

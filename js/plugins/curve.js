@@ -6,6 +6,7 @@ registerShape({
     type: 'curve',
     name: '曲线',
     icon: '〰️',
+    version: '2.0.0-migrated',
     
     createDefault: function(x, y) {
         return {
@@ -214,6 +215,140 @@ registerShape({
             
             return code;
         }
+    },
+    
+    // ═══════════════════════════════════════════
+    // 插件化v2.0新增方法
+    // ═══════════════════════════════════════════
+    
+    getBounds: function(element, editor) {
+        const props = element.props;
+        const points = props.points || [];
+        if (points.length > 0) {
+            const canvasPoints = points.map(p => editor.manimToCanvas(p[0], p[1]));
+            const minX = Math.min(...canvasPoints.map(p => p.x));
+            const minY = Math.min(...canvasPoints.map(p => p.y));
+            const maxX = Math.max(...canvasPoints.map(p => p.x));
+            const maxY = Math.max(...canvasPoints.map(p => p.y));
+            
+            // 注意：不加padding！padding会导致缩放时固定点计算错误
+            return { 
+                x: minX, 
+                y: minY, 
+                w: maxX - minX, 
+                h: maxY - minY 
+            };
+        }
+        return null;
+    },
+    
+    updateWhileDrawing: function(element, start, current, editor) {
+        // 曲线使用点击式绘制，不需要拖动更新
+        // 保留此方法为空实现
+    },
+    
+    handleScale: function(element, scaleInfo, editor) {
+        const { corner, fixedPoint, currentPoint, isShift, originalProps } = scaleInfo;
+        
+        const points = originalProps.points;
+        if (!points || points.length === 0) return {};
+        
+        const xs = points.map(p => p[0]);
+        const ys = points.map(p => p[1]);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+        const originalWidth = maxX - minX;
+        const originalHeight = maxY - minY;
+        
+        // 步骤1：计算新尺寸
+        let newWidth = Math.abs(currentPoint.x - fixedPoint.x);
+        let newHeight = Math.abs(currentPoint.y - fixedPoint.y);
+        
+        // 步骤2：等比例调整
+        if (isShift && originalWidth > 0 && originalHeight > 0) {
+            const scaleW = newWidth / originalWidth;
+            const scaleH = newHeight / originalHeight;
+            const scale = Math.max(scaleW, scaleH);
+            
+            newWidth = originalWidth * scale;
+            newHeight = originalHeight * scale;
+        }
+        
+        // 步骤3：根据corner确定新角位置（固定方向）
+        let newCornerX, newCornerY;
+        
+        if (corner === 'topLeft') {
+            newCornerX = fixedPoint.x - newWidth;
+            newCornerY = fixedPoint.y + newHeight;
+        } else if (corner === 'topRight') {
+            newCornerX = fixedPoint.x + newWidth;
+            newCornerY = fixedPoint.y + newHeight;
+        } else if (corner === 'bottomRight') {
+            newCornerX = fixedPoint.x + newWidth;
+            newCornerY = fixedPoint.y - newHeight;
+        } else { // bottomLeft
+            newCornerX = fixedPoint.x - newWidth;
+            newCornerY = fixedPoint.y - newHeight;
+        }
+        
+        // 步骤4：新中心
+        const newCenterX = (fixedPoint.x + newCornerX) / 2;
+        const newCenterY = (fixedPoint.y + newCornerY) / 2;
+        
+        // 步骤5：缩放所有控制点
+        const scaleX = originalWidth > 0 ? newWidth / originalWidth : 1;
+        const scaleY = originalHeight > 0 ? newHeight / originalHeight : 1;
+        
+        const newPoints = points.map(p => [
+            newCenterX + (p[0] - center.x) * scaleX,
+            newCenterY + (p[1] - center.y) * scaleY,
+            0
+        ]);
+        
+        return { points: newPoints };
+    },
+    
+    getMoveAnchor: function(element) {
+        // curve：使用增量移动，返回null
+        return null;
+    },
+    
+    handleMove: function(element, moveInfo, editor) {
+        // curve的移动：平移所有控制点
+        if (moveInfo.deltaX !== undefined && moveInfo.deltaY !== undefined) {
+            const newPoints = element.props.points.map(p => [
+                p[0] + moveInfo.deltaX,
+                p[1] + moveInfo.deltaY,
+                0
+            ]);
+            
+            return { points: newPoints };
+        }
+        return {};
+    },
+    
+    getControlPoints: function(element, editor) {
+        if (!element.props.points) return null;
+        
+        return element.props.points.map((point, index) => ({
+            id: `p${index}`,
+            x: point[0],
+            y: point[1],
+            type: index === 0 || index === element.props.points.length - 1
+                ? 'endpoint'
+                : 'control'
+        }));
+    },
+    
+    updateControlPoint: function(element, pointId, newX, newY, editor) {
+        const index = parseInt(pointId.substring(1));
+        const newPoints = [...element.props.points];
+        newPoints[index] = [newX, newY, 0];
+        
+        return { points: newPoints };
     },
     
     properties: [

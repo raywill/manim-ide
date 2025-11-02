@@ -6,6 +6,7 @@ registerShape({
     type: 'square',
     name: '正方形',
     icon: '⬜',
+    version: '2.0.0-migrated',
     
     createDefault: function(x, y) {
         return {
@@ -73,6 +74,76 @@ registerShape({
         }
         
         return code;
+    },
+    
+    // ═══════════════════════════════════════════
+    // 插件化v2.0新增方法
+    // ═══════════════════════════════════════════
+    
+    getBounds: function(element, editor) {
+        const props = element.props;
+        const pos = editor.manimToCanvas(props.x, props.y);
+        const size = (props.size || 1) * 50;
+        return { x: pos.x - size/2, y: pos.y - size/2, w: size, h: size };
+    },
+    
+    updateWhileDrawing: function(element, start, current, editor) {
+        const width = Math.abs(current.manimX - start.manimX);
+        const height = Math.abs(current.manimY - start.manimY);
+        const size = Math.max(width, height);  // 正方形：取最大值
+        const centerX = (current.manimX + start.manimX) / 2;
+        const centerY = (current.manimY + start.manimY) / 2;
+        
+        element.props.size = size;
+        element.props.x = centerX;
+        element.props.y = centerY;
+    },
+    
+    handleScale: function(element, scaleInfo, editor) {
+        const { corner, fixedPoint, currentPoint } = scaleInfo;
+        
+        // 正方形：始终等比例
+        const newWidth = Math.abs(currentPoint.x - fixedPoint.x);
+        const newHeight = Math.abs(currentPoint.y - fixedPoint.y);
+        const newSize = Math.max(newWidth, newHeight);
+        
+        // 根据corner确定新角位置（固定方向）
+        let newCornerX, newCornerY;
+        
+        if (corner === 'topLeft') {
+            newCornerX = fixedPoint.x - newSize;
+            newCornerY = fixedPoint.y + newSize;
+        } else if (corner === 'topRight') {
+            newCornerX = fixedPoint.x + newSize;
+            newCornerY = fixedPoint.y + newSize;
+        } else if (corner === 'bottomRight') {
+            newCornerX = fixedPoint.x + newSize;
+            newCornerY = fixedPoint.y - newSize;
+        } else { // bottomLeft
+            newCornerX = fixedPoint.x - newSize;
+            newCornerY = fixedPoint.y - newSize;
+        }
+        
+        // 新中心
+        const newCenterX = (fixedPoint.x + newCornerX) / 2;
+        const newCenterY = (fixedPoint.y + newCornerY) / 2;
+        
+        return {
+            size: Math.max(0.1, newSize),
+            x: newCenterX,
+            y: newCenterY
+        };
+    },
+    
+    getMoveAnchor: function(element) {
+        return { x: element.props.x, y: element.props.y };
+    },
+    
+    handleMove: function(element, moveInfo, editor) {
+        return {
+            x: moveInfo.currentPoint.x - moveInfo.offset.x,
+            y: moveInfo.currentPoint.y - moveInfo.offset.y
+        };
     },
     
     properties: [

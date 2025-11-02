@@ -90,9 +90,73 @@ window.toggleHandleDebug = function() {
     console.log(`控制点响应区域显示: ${ManimEditor.showHandleDebug ? '开启' : '关闭'}`);
 };
 
+// 缩放调试工具
+window.debugScale = {
+    enabled: false,
+    history: [],
+    
+    enable: function() {
+        this.enabled = true;
+        this.history = [];
+        console.log('%c缩放调试已启用', 'color: #2ecc71; font-weight: bold;');
+    },
+    
+    disable: function() {
+        this.enabled = false;
+        console.log('%c缩放调试已禁用', 'color: #95a5a6;');
+    },
+    
+    log: function(event, data) {
+        if (!this.enabled) return;
+        
+        this.history.push({ event, data, time: Date.now() });
+        
+        if (event === 'mousedown') {
+            console.log('%c━━━ 开始新的拖动 ━━━', 'color: #3498db; font-weight: bold;');
+            console.log('[mousedown] fixedPoint=', data.fixedPoint);
+        } else if (event === 'mousemove') {
+            console.log('[mousemove] fixedPoint=', data.fixedPoint, 'currentPoint=', data.currentPoint);
+        } else if (event === 'mouseup') {
+            console.log('%c━━━ 拖动结束 ━━━', 'color: #3498db;');
+            this.analyze();
+        }
+    },
+    
+    analyze: function() {
+        const mousedowns = this.history.filter(h => h.event === 'mousedown');
+        const mousemoves = this.history.filter(h => h.event === 'mousemove');
+        
+        if (mousedowns.length > 1) {
+            console.warn('%c⚠️ 一次拖动中有多次mousedown！', 'color: #e74c3c; font-weight: bold;');
+        }
+        
+        if (mousemoves.length > 0) {
+            const firstFixed = mousedowns[0]?.data.fixedPoint;
+            let moved = false;
+            
+            mousemoves.forEach((h, i) => {
+                const diff = {
+                    x: Math.abs(h.data.fixedPoint.x - firstFixed.x),
+                    y: Math.abs(h.data.fixedPoint.y - firstFixed.y)
+                };
+                
+                if (diff.x > 0.001 || diff.y > 0.001) {
+                    moved = true;
+                    console.error(`%c✗ 第${i+1}次mousemove: fixedPoint移动了 Δx=${diff.x.toFixed(4)}, Δy=${diff.y.toFixed(4)}`, 'color: #e74c3c;');
+                }
+            });
+            
+            if (!moved) {
+                console.log('%c✓ fixedPoint在整个拖动过程中保持不变', 'color: #2ecc71; font-weight: bold;');
+            }
+        }
+    }
+};
+
 console.log('%cDebug commands available:', 'color: #95a5a6; font-size: 12px;');
 console.log('- ManimEditor: 访问编辑器状态');
 console.log('- exportManimCode(): 生成Manim代码');
 console.log('- clearScene(): 清空场景');
 console.log('- toggleHandleDebug(): 切换控制点响应区域显示（默认开启）');
+console.log('- debugScale.enable(): 启用缩放调试（诊断固定点问题）');
 
