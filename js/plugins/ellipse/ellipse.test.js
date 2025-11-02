@@ -44,9 +44,9 @@ function testEllipse() {
         if (el.type !== 'ellipse') throw new Error('type错误');
     });
     
-    test('默认宽度2，高度1', () => {
+    test('默认宽高应为0（拖动绘制避免闪现）', () => {
         const el = plugin.createDefault(0, 0);
-        if (el.props.width !== 2 || el.props.height !== 1) {
+        if (el.props.width !== 0 || el.props.height !== 0) {
             throw new Error('默认尺寸错误');
         }
     });

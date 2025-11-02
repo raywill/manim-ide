@@ -128,8 +128,26 @@ const ManimEditor = {
                 scale: scale
             };
         }
+    },
+    
+    // 通用工具方法
+    utils: {}
+};
+
+// 通用渲染辅助：设置渲染透明度（考虑 hidden/opacity）
+ManimEditor.utils.setRenderOpacity = function(ctx, element) {
+    const props = element.props || {};
+    if (props.hidden) {
+        ctx.globalAlpha = 0.1;  // hidden元素：弱可见，便于找回
+    } else {
+        ctx.globalAlpha = props.opacity !== undefined ? props.opacity : 1;
     }
 };
+
+// 兼容旧插件：提供全局别名，便于逐步迁移
+if (typeof window !== 'undefined') {
+    window.setRenderOpacity = ManimEditor.utils.setRenderOpacity;
+}
 
 /**
  * 注册形状插件
