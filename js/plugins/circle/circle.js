@@ -48,7 +48,7 @@ registerShape({
     render: function(ctx, element, editor) {
         const props = element.props;
         const pos = editor.manimToCanvas(props.x, props.y);
-        const radius = (props.radius !== undefined ? props.radius : 1) * 50;
+        const radius = (props.radius !== undefined ? props.radius : 1) * editor.pxPerUnit;
         
         setRenderOpacity(ctx, element);
         

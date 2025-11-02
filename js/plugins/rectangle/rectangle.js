@@ -30,8 +30,9 @@ registerShape({
     render: function(ctx, element, editor) {
         const props = element.props;
         const pos = editor.manimToCanvas(props.x, props.y);
-        const width = (props.width !== undefined ? props.width : 2) * 50;
-        const height = (props.height !== undefined ? props.height : 1) * 50;
+        const px = editor.pxPerUnit || 50;
+        const width = (props.width !== undefined ? props.width : 2) * px;
+        const height = (props.height !== undefined ? props.height : 1) * px;
         
         const x = pos.x - width / 2;
         const y = pos.y - height / 2;
@@ -118,8 +119,9 @@ registerShape({
     getBounds: function(element, editor) {
         const props = element.props;
         const pos = editor.manimToCanvas(props.x, props.y);
-        const w = (props.width || 2) * 50;
-        const h = (props.height || 1) * 50;
+        const px2 = editor.pxPerUnit || 50;
+        const w = (props.width || 2) * px2;
+        const h = (props.height || 1) * px2;
         return { x: pos.x - w/2, y: pos.y - h/2, w, h };
     },
     
