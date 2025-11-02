@@ -132,6 +132,18 @@ registerShape({
         ctx.arc(centerCanvas.x, centerCanvas.y, 3, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1;
+
+        // 选中时绘制控制点 A/B/C（蓝色实心）
+        if (element.id === editor.selectedElement?.id) {
+            const points = [element.props.pointA, element.props.pointB, element.props.pointC];
+            ctx.fillStyle = PREVIEW_STYLES.pointBColor || '#3498db';
+            points.forEach(p => {
+                const c = editor.manimToCanvas(p[0], p[1]);
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
     },
 
     onDrawClick: function(state, point, editor) {
@@ -365,6 +377,23 @@ registerShape({
             pointB: [element.props.pointB[0] + dx, element.props.pointB[1] + dy, 0],
             pointC: [element.props.pointC[0] + dx, element.props.pointC[1] + dy, 0]
         };
+    },
+
+    // 控制点：A/B/C
+    getControlPoints: function(element, editor) {
+        return [
+            { id: 'A', x: element.props.pointA[0], y: element.props.pointA[1] },
+            { id: 'B', x: element.props.pointB[0], y: element.props.pointB[1] },
+            { id: 'C', x: element.props.pointC[0], y: element.props.pointC[1] }
+        ];
+    },
+
+    updateControlPoint: function(element, pointId, newX, newY, editor) {
+        const updated = {};
+        if (pointId === 'A') updated.pointA = [newX, newY, 0];
+        if (pointId === 'B') updated.pointB = [newX, newY, 0];
+        if (pointId === 'C') updated.pointC = [newX, newY, 0];
+        return updated;
     },
 
     toManim: function(element) {
