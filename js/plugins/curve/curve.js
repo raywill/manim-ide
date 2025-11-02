@@ -7,6 +7,7 @@ registerShape({
     name: '曲线',
     icon: '〰️',
     version: '2.0.0-migrated',
+    drawMode: 'multiClick',  // 点击式绘制
     
     createDefault: function(x, y) {
         return {
@@ -21,6 +22,7 @@ registerShape({
                 color: '#9b59b6',
                 stroke_width: 2,
                 smoothness: 1,
+                z_order: 0,
                 hidden: false
             }
         };
@@ -213,6 +215,12 @@ registerShape({
                 code += `\n        ${varName}.set_stroke(width=${formatNumber(props.stroke_width)})`;
             }
             
+            // 设置 z-index
+            const zOrder = props.z_order !== undefined ? props.z_order : 0;
+            if (zOrder !== 0) {
+                code += `.set_z_index(${zOrder})`;
+            }
+            
             return code;
         }
     },
@@ -352,7 +360,54 @@ registerShape({
     },
     
     // ═══════════════════════════════════════════
-    // v2.1新增：绘制预览（点击式绘制支持）
+    // v2.1新增：点击式绘制接口
+    // ═══════════════════════════════════════════
+    
+    onDrawClick: function(state, point, editor) {
+        // 处理点击事件
+        if (!state) {
+            // 第一次点击：创建state
+            return {
+                continue: true,
+                state: { points: [point] }
+            };
+        }
+        
+        // 继续添加点
+        const newState = { points: [...state.points, point] };
+        console.log(`放置P${state.points.length}（第${state.points.length + 1}个点），双击完成`);
+        
+        return {
+            continue: true,
+            state: newState
+        };
+    },
+    
+    onDrawDoubleClick: function(state, editor) {
+        // 双击完成绘制
+        if (!state || !state.points || state.points.length < 2) {
+            console.warn('曲线至少需要2个点');
+            return null;
+        }
+        
+        console.log(`曲线完成，共${state.points.length}个点`);
+        
+        // 返回完成的元素
+        return {
+            type: 'curve',
+            name: 'curve_' + (editor.elements.length + 1),
+            props: {
+                points: [...state.points],
+                color: '#9b59b6',
+                stroke_width: 2,
+                smoothness: 1,
+                hidden: false
+            }
+        };
+    },
+    
+    // ═══════════════════════════════════════════
+    // v2.1新增：绘制预览（支持任意多个点）
     // ═══════════════════════════════════════════
     renderDrawingPreview: function(ctx, state, editor) {
         const points = state.points || [];
@@ -366,18 +421,26 @@ registerShape({
         points.forEach((point, index) => {
             const canvasPoint = editor.manimToCanvas(point[0], point[1]);
             
+            // 端点用红色，控制点用蓝色
+            ctx.fillStyle = (index === 0 || index === points.length - 1) ? '#e74c3c' : '#3498db';
             ctx.beginPath();
             ctx.arc(canvasPoint.x, canvasPoint.y, 6, 0, Math.PI * 2);
             ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
             
             // 标签
             ctx.fillStyle = '#2c3e50';
-            ctx.font = '12px monospace';
+            ctx.font = '11px monospace';
             ctx.fillText(`P${index}`, canvasPoint.x + 10, canvasPoint.y - 10);
-            ctx.fillStyle = '#9b59b6';
         });
         
-        // 绘制连接线
+        ctx.lineWidth = 2;
+        ctx.fillStyle = '#9b59b6';
+        ctx.strokeStyle = '#9b59b6';
+        
+        // 绘制连接线（虚线）
         if (points.length > 1) {
             ctx.strokeStyle = '#bdc3c7';
             ctx.setLineDash([5, 5]);
@@ -396,10 +459,11 @@ registerShape({
             ctx.setLineDash([]);
         }
         
-        // 绘制预览点
-        if (previewPoint && points.length < 4) {
+        // 绘制预览点（跟随鼠标）
+        if (previewPoint) {
             const canvasPoint = editor.manimToCanvas(previewPoint[0], previewPoint[1]);
             ctx.globalAlpha = 0.5;
+            ctx.fillStyle = '#9b59b6';
             ctx.beginPath();
             ctx.arc(canvasPoint.x, canvasPoint.y, 6, 0, Math.PI * 2);
             ctx.fill();
@@ -410,29 +474,51 @@ registerShape({
             ctx.fillText(`P${points.length}`, canvasPoint.x + 10, canvasPoint.y - 10);
         }
         
-        // 绘制曲线预览
+        // 绘制平滑曲线预览（如果有足够的点）
         if (points.length >= 2) {
             ctx.strokeStyle = '#9b59b6';
             ctx.lineWidth = 2;
             ctx.globalAlpha = 0.6;
             
+            // 使用实际的点绘制平滑曲线
             const tempPoints = [...points];
-            if (previewPoint && points.length < 4) {
+            if (previewPoint) {
                 tempPoints.push(previewPoint);
             }
-            while (tempPoints.length < 4) {
-                tempPoints.push(tempPoints[tempPoints.length - 1]);
+            
+            // 绘制平滑路径
+            ctx.beginPath();
+            const startCanvas = editor.manimToCanvas(tempPoints[0][0], tempPoints[0][1]);
+            ctx.moveTo(startCanvas.x, startCanvas.y);
+            
+            if (tempPoints.length === 2) {
+                // 2个点：直线
+                const p1 = editor.manimToCanvas(tempPoints[1][0], tempPoints[1][1]);
+                ctx.lineTo(p1.x, p1.y);
+            } else if (tempPoints.length === 3) {
+                // 3个点：二次贝塞尔
+                const p1 = editor.manimToCanvas(tempPoints[1][0], tempPoints[1][1]);
+                const p2 = editor.manimToCanvas(tempPoints[2][0], tempPoints[2][1]);
+                ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+            } else if (tempPoints.length >= 4) {
+                // 4+个点：分段三次贝塞尔
+                for (let i = 0; i < tempPoints.length - 1; i += 3) {
+                    if (i + 3 < tempPoints.length) {
+                        const p1 = editor.manimToCanvas(tempPoints[i + 1][0], tempPoints[i + 1][1]);
+                        const p2 = editor.manimToCanvas(tempPoints[i + 2][0], tempPoints[i + 2][1]);
+                        const p3 = editor.manimToCanvas(tempPoints[i + 3][0], tempPoints[i + 3][1]);
+                        ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+                    } else if (i + 2 < tempPoints.length) {
+                        const p1 = editor.manimToCanvas(tempPoints[i + 1][0], tempPoints[i + 1][1]);
+                        const p2 = editor.manimToCanvas(tempPoints[i + 2][0], tempPoints[i + 2][1]);
+                        ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+                    } else if (i + 1 < tempPoints.length) {
+                        const p1 = editor.manimToCanvas(tempPoints[i + 1][0], tempPoints[i + 1][1]);
+                        ctx.lineTo(p1.x, p1.y);
+                    }
+                }
             }
             
-            // 绘制贝塞尔曲线
-            const p0 = editor.manimToCanvas(tempPoints[0][0], tempPoints[0][1]);
-            const p1 = editor.manimToCanvas(tempPoints[1][0], tempPoints[1][1]);
-            const p2 = editor.manimToCanvas(tempPoints[2][0], tempPoints[2][1]);
-            const p3 = editor.manimToCanvas(tempPoints[3][0], tempPoints[3][1]);
-            
-            ctx.beginPath();
-            ctx.moveTo(p0.x, p0.y);
-            ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
             ctx.stroke();
             ctx.globalAlpha = 1;
         }
@@ -440,14 +526,20 @@ registerShape({
         // 提示信息
         ctx.fillStyle = '#2c3e50';
         ctx.font = '14px sans-serif';
-        const messages = ['点击放置起点 P0', '点击放置控制点 P1', '点击放置控制点 P2', '点击放置终点 P3'];
-        ctx.fillText(messages[points.length] || '曲线完成', 20, editor.canvas.height - 20);
+        if (points.length === 0) {
+            ctx.fillText('点击放置起点', 20, editor.canvas.height - 20);
+        } else if (points.length === 1) {
+            ctx.fillText('点击添加控制点，双击完成', 20, editor.canvas.height - 20);
+        } else {
+            ctx.fillText(`已放置${points.length}个点，双击完成`, 20, editor.canvas.height - 20);
+        }
     },
     
     properties: [
         { key: 'color', label: '颜色', type: 'color' },
         { key: 'stroke_width', label: '线宽', type: 'number' },
-        { key: 'smoothness', label: '平滑度', type: 'number' }
+        { key: 'smoothness', label: '平滑度', type: 'number' },
+        { key: 'z_order', label: 'Z序', type: 'number', step: 1 }
     ]
 });
 

@@ -15,9 +15,12 @@ registerShape({
             props: {
                 x: x || 0,
                 y: y || 0,
-                size: 1,
-                color: '#3498db',
-                opacity: 1,
+                size: 0,  // 从0开始，避免绘制时闪现默认大小
+                fill_color: '#3498db',
+                stroke_color: '#2c3e50',
+                fill_opacity: 1,
+                stroke_width: 2,
+                z_order: 0,
                 hidden: false
             }
         };
@@ -26,21 +29,30 @@ registerShape({
     render: function(ctx, element, editor) {
         const props = element.props;
         const pos = editor.manimToCanvas(props.x, props.y);
-        const size = (props.size || 1) * 50; // 50像素 = 1 Manim单位
-        
-        ctx.fillStyle = props.color || '#3498db';
-        ctx.globalAlpha = props.opacity !== undefined ? props.opacity : 1;
-        ctx.strokeStyle = '#2c3e50';
-        ctx.lineWidth = 2;
+        const size = (props.size !== undefined ? props.size : 1) * 50;
         
         const x = pos.x - size / 2;
         const y = pos.y - size / 2;
         
-        ctx.fillRect(x, y, size, size);
+        setRenderOpacity(ctx, element);
+        
+        // 绘制填充
+        const fillOpacity = props.fill_opacity !== undefined ? props.fill_opacity : 1;
+        if (fillOpacity > 0) {
+            ctx.fillStyle = props.fill_color || props.color || '#3498db';
+            const savedAlpha = ctx.globalAlpha;
+            ctx.globalAlpha = savedAlpha * fillOpacity;
+            ctx.fillRect(x, y, size, size);
+            ctx.globalAlpha = savedAlpha;
+        }
+        
+        // 绘制边框
+        ctx.strokeStyle = props.stroke_color || '#2c3e50';
+        ctx.lineWidth = props.stroke_width || 2;
         ctx.strokeRect(x, y, size, size);
         
         // 绘制中心点
-        ctx.fillStyle = '#e74c3c';
+        ctx.fillStyle = '#95a5a6';
         ctx.globalAlpha = 0.7;
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
@@ -59,18 +71,32 @@ registerShape({
         const props = element.props;
         const varName = sanitizeVariableName(element.name);
         const size = formatNumber(props.size || 1);
-        const color = hexToManimColor(props.color || '#3498db');
         const x = formatNumber(props.x);
         const y = formatNumber(props.y);
         
-        let code = `${varName} = Square(side_length=${size}, color=${color})`;
+        const fillColor = hexToManimColor(props.fill_color || props.color || '#3498db');
+        const strokeColor = hexToManimColor(props.stroke_color || '#2c3e50');
+        
+        let code = `${varName} = Square(side_length=${size})`;
         
         if (props.x !== 0 || props.y !== 0) {
             code += `.move_to([${x}, ${y}, 0])`;
         }
         
-        if (props.opacity !== undefined && props.opacity !== 1) {
-            code += `.set_opacity(${formatNumber(props.opacity)})`;
+        const fillOpacity = props.fill_opacity !== undefined ? props.fill_opacity : 1;
+        if (fillOpacity > 0) {
+            code += `.set_fill(${fillColor}, ${formatNumber(fillOpacity)})`;
+        } else {
+            code += `.set_fill(opacity=0)`;
+        }
+        
+        const strokeWidth = formatNumber(props.stroke_width || 2);
+        code += `.set_stroke(${strokeColor}, width=${strokeWidth})`;
+        
+        // 设置 z-index
+        const zOrder = props.z_order !== undefined ? props.z_order : 0;
+        if (zOrder !== 0) {
+            code += `.set_z_index(${zOrder})`;
         }
         
         return code;
@@ -88,11 +114,22 @@ registerShape({
     },
     
     updateWhileDrawing: function(element, start, current, editor) {
-        const width = Math.abs(current.manimX - start.manimX);
-        const height = Math.abs(current.manimY - start.manimY);
-        const size = Math.max(width, height);  // 正方形：取最大值
-        const centerX = (current.manimX + start.manimX) / 2;
-        const centerY = (current.manimY + start.manimY) / 2;
+        // 正方形绘制：起点是一个角，保持正方形约束
+        const dx = current.manimX - start.manimX;
+        const dy = current.manimY - start.manimY;
+        
+        // 边长取较大的距离，保持正方形
+        const size = Math.max(Math.abs(dx), Math.abs(dy));
+        
+        // 根据拖动方向确定对角点位置
+        const signX = dx >= 0 ? 1 : -1;
+        const signY = dy >= 0 ? 1 : -1;
+        const cornerX = start.manimX + signX * size;
+        const cornerY = start.manimY + signY * size;
+        
+        // 中心在起点和对角点之间
+        const centerX = (start.manimX + cornerX) / 2;
+        const centerY = (start.manimY + cornerY) / 2;
         
         element.props.size = size;
         element.props.x = centerX;
@@ -147,11 +184,14 @@ registerShape({
     },
     
     properties: [
-        { key: 'x', label: 'X坐标', type: 'number' },
-        { key: 'y', label: 'Y坐标', type: 'number' },
-        { key: 'size', label: '边长', type: 'number' },
-        { key: 'color', label: '颜色', type: 'color' },
-        { key: 'opacity', label: '不透明度', type: 'number' }
+        { key: 'x', label: 'X坐标', type: 'number', step: 0.01 },
+        { key: 'y', label: 'Y坐标', type: 'number', step: 0.01 },
+        { key: 'size', label: '边长', type: 'number', step: 0.01, min: 0.1 },
+        { key: 'fill_color', label: '填充色', type: 'color' },
+        { key: 'fill_opacity', label: '填充透明度', type: 'number', step: 0.1, min: 0, max: 1 },
+        { key: 'stroke_color', label: '边框色', type: 'color' },
+        { key: 'stroke_width', label: '边框宽度', type: 'number', step: 0.1, min: 0.5 },
+        { key: 'z_order', label: 'Z序', type: 'number', step: 1 }
     ]
 });
 

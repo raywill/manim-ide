@@ -1,22 +1,23 @@
 /**
- * Arrow 插件
+ * Line 插件
  */
 
 registerShape({
-    type: 'arrow',
-    name: '箭头',
-    icon: '→',
+    type: 'line',
+    name: '线段',
+    icon: '—',
     version: '2.0.0-migrated',
     
     createDefault: function(x, y) {
         return {
-            type: 'arrow',
-            name: 'arrow_' + (ManimEditor.elements.length + 1),
+            type: 'line',
+            name: 'line_' + (ManimEditor.elements.length + 1),
             props: {
                 start: [x - 1, y, 0],
                 end: [x + 1, y, 0],
-                color: '#e74c3c',
+                color: '#2c3e50',
                 stroke_width: 2,
+                z_order: 0,
                 hidden: false
             }
         };
@@ -27,35 +28,17 @@ registerShape({
         const start = editor.manimToCanvas(props.start[0], props.start[1]);
         const end = editor.manimToCanvas(props.end[0], props.end[1]);
         
-        ctx.strokeStyle = props.color || '#e74c3c';
+        ctx.strokeStyle = props.color || '#2c3e50';
         ctx.lineWidth = props.stroke_width || 2;
         
-        // 绘制箭头线
+        // 绘制线段
         ctx.beginPath();
         ctx.moveTo(start.x, start.y);
         ctx.lineTo(end.x, end.y);
         ctx.stroke();
         
-        // 绘制箭头头部
-        const angle = Math.atan2(end.y - start.y, end.x - start.x);
-        const headLength = 15;
-        const headAngle = Math.PI / 6;
-        
-        ctx.beginPath();
-        ctx.moveTo(end.x, end.y);
-        ctx.lineTo(
-            end.x - headLength * Math.cos(angle - headAngle),
-            end.y - headLength * Math.sin(angle - headAngle)
-        );
-        ctx.moveTo(end.x, end.y);
-        ctx.lineTo(
-            end.x - headLength * Math.cos(angle + headAngle),
-            end.y - headLength * Math.sin(angle + headAngle)
-        );
-        ctx.stroke();
-        
-        // 绘制起点和终点
-        ctx.fillStyle = props.color || '#e74c3c';
+        // 绘制端点
+        ctx.fillStyle = props.color || '#2c3e50';
         ctx.beginPath();
         ctx.arc(start.x, start.y, 4, 0, Math.PI * 2);
         ctx.fill();
@@ -78,7 +61,6 @@ registerShape({
         const lengthSquared = dx * dx + dy * dy;
         
         if (lengthSquared === 0) {
-            // 起点和终点相同
             const dist = Math.sqrt((manimX - startX) ** 2 + (manimY - startY) ** 2);
             return dist < 0.3;
         }
@@ -91,25 +73,31 @@ registerShape({
         const projY = startY + t * dy;
         const dist = Math.sqrt((manimX - projX) ** 2 + (manimY - projY) ** 2);
         
-        return dist < 0.3; // 0.3 Manim单位的容差
+        return dist < 0.3;
     },
     
     toManim: function(element) {
         const props = element.props;
         const varName = sanitizeVariableName(element.name);
-        const color = hexToManimColor(props.color || '#e74c3c');
+        const color = hexToManimColor(props.color || '#2c3e50');
         const startX = formatNumber(props.start[0]);
         const startY = formatNumber(props.start[1]);
         const endX = formatNumber(props.end[0]);
         const endY = formatNumber(props.end[1]);
         
-        let code = `${varName} = Arrow(start=[${startX}, ${startY}, 0], end=[${endX}, ${endY}, 0], color=${color}`;
+        let code = `${varName} = Line(start=[${startX}, ${startY}, 0], end=[${endX}, ${endY}, 0], color=${color}`;
         
         if (props.stroke_width && props.stroke_width !== 2) {
             code += `, stroke_width=${formatNumber(props.stroke_width)}`;
         }
         
         code += ')';
+        
+        // 设置 z-index
+        const zOrder = props.z_order !== undefined ? props.z_order : 0;
+        if (zOrder !== 0) {
+            code += `.set_z_index(${zOrder})`;
+        }
         
         return code;
     },
@@ -128,7 +116,6 @@ registerShape({
         const maxY = Math.max(start.y, end.y);
         
         // 注意：不加padding！padding会导致缩放时固定点计算错误
-        // 如果需要更大的点击区域，在选择框绘制时加padding
         return { 
             x: minX, 
             y: minY, 
@@ -210,13 +197,12 @@ registerShape({
     },
     
     getMoveAnchor: function(element) {
-        // arrow：使用增量移动，返回null
+        // line：使用增量移动，返回null
         return null;
     },
     
     handleMove: function(element, moveInfo, editor) {
-        // arrow的移动：平移起点和终点
-        // 使用增量方式移动
+        // line的移动：平移起点和终点
         if (moveInfo.deltaX !== undefined && moveInfo.deltaY !== undefined) {
             return {
                 start: [
@@ -240,7 +226,8 @@ registerShape({
         { key: 'end[0]', label: '终点X', type: 'number' },
         { key: 'end[1]', label: '终点Y', type: 'number' },
         { key: 'color', label: '颜色', type: 'color' },
-        { key: 'stroke_width', label: '线宽', type: 'number' }
+        { key: 'stroke_width', label: '线宽', type: 'number' },
+        { key: 'z_order', label: 'Z序', type: 'number', step: 1 }
     ]
 });
 

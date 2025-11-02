@@ -59,10 +59,9 @@ function setSelectMode() {
     ManimEditor.mode = 'select';
     ManimEditor.currentShapeType = null;
     
-    // 取消曲线绘制状态
-    ManimEditor.isCurveDrawing = false;
-    ManimEditor.curvePoints = [];
-    ManimEditor.curvePreviewPoint = null;
+    // 取消绘制状态（通用）
+    ManimEditor.drawingState = null;
+    ManimEditor.previewPoint = null;
     
     document.getElementById('canvas-container').classList.remove('draw-mode');
     document.getElementById('canvas-container').classList.add('select-mode');
@@ -99,7 +98,25 @@ function initCanvasEvents() {
         const canvasY = e.clientY - rect.top;
         const manimCoord = ManimEditor.canvasToManim(canvasX, canvasY);
         
-        coordDisplay.textContent = `Manim: (${manimCoord.x.toFixed(2)}, ${manimCoord.y.toFixed(2)})`;
+        // 坐标显示 + 模式提示
+        let displayText = `Manim: (${manimCoord.x.toFixed(2)}, ${manimCoord.y.toFixed(2)})`;
+        
+        // 如果在绘制模式，显示提示
+        if (ManimEditor.mode === 'draw') {
+            const shapeName = ManimEditor.shapeRegistry[ManimEditor.currentShapeType]?.name || '图形';
+            if (ManimEditor.drawingState) {
+                // 点击式绘制中
+                displayText += ` | 正在绘制${shapeName}（双击完成，ESC取消）`;
+            } else {
+                // 准备绘制
+                displayText += ` | ${shapeName}绘制模式（ESC退出）`;
+            }
+        } else if (ManimEditor.selectedElement) {
+            // 选中元素时
+            displayText += ` | 按ESC取消选择`;
+        }
+        
+        coordDisplay.textContent = displayText;
         coordDisplay.classList.add('visible');
         
         // 拖拽元素或控制点
@@ -136,7 +153,9 @@ function initCanvasEvents() {
                         moveInfo.deltaY = dy - dragOffset.lastY;
                     }
                     
+                    console.log('[mousemove] moveInfo:', moveInfo);
                     const newProps = plugin.handleMove(dragElement, moveInfo, ManimEditor);
+                    console.log('[mousemove] handleMove returned:', newProps);
                     updateElement(dragElement.id, newProps);
                     
                     // 更新lastX/lastY
@@ -262,8 +281,19 @@ function initCanvasEvents() {
         // 优先级2：如果在绘制模式，优先绘制（即使点击在其他元素上）
         // ═══════════════════════════════════════════
         if (ManimEditor.mode === 'draw') {
-            // 绘制模式：开始绘制新元素
-             startDrawing(canvasX, canvasY);
+            // 根据插件的drawMode决定绘制方式
+            const plugin = ManimEditor.shapeRegistry[ManimEditor.currentShapeType];
+            const drawMode = plugin?.drawMode || 'drag';
+            
+            console.log(`[mousedown绘制] type=${ManimEditor.currentShapeType}, drawMode=${drawMode}`);
+            
+            if (drawMode === 'multiClick' || drawMode === 'click') {
+                // 点击式绘制（通用）
+                handleClickDrawing(canvasX, canvasY);
+            } else {
+                // 拖动式绘制
+                startDrawing(canvasX, canvasY);
+            }
             return;
         }
         
@@ -283,6 +313,8 @@ function initCanvasEvents() {
             const plugin = ManimEditor.shapeRegistry[clickedElement.type];
             const anchor = plugin && plugin.getMoveAnchor ? plugin.getMoveAnchor(clickedElement) : null;
             
+            console.log('[mousedown] clickPoint:', manimCoord, 'anchor:', anchor);
+            
             if (anchor === null) {
                 // null表示使用增量移动
                 dragOffset = {
@@ -300,6 +332,8 @@ function initCanvasEvents() {
                     y: manimCoord.y - anchor.y
                 };
             }
+            
+            console.log('[mousedown] dragOffset:', dragOffset);
             
             render();
         } else {
@@ -331,13 +365,21 @@ function initCanvasEvents() {
         }
     });
     
-    // 双击编辑
+    // 双击编辑或完成绘制
     canvas.addEventListener('dblclick', (e) => {
         const rect = canvas.getBoundingClientRect();
         const canvasX = e.clientX - rect.left;
         const canvasY = e.clientY - rect.top;
-        const element = findElementAtPoint(canvasX, canvasY);
         
+        // 如果在点击式绘制，双击完成
+        if (ManimEditor.mode === 'draw' && ManimEditor.drawingState) {
+            console.log('双击完成绘制');
+            finishClickDrawing();
+            return;
+        }
+        
+        // 否则是双击编辑
+        const element = findElementAtPoint(canvasX, canvasY);
         if (element) {
             ManimEditor.selectedElement = element;
             showPropertyPanel(element);
@@ -345,16 +387,16 @@ function initCanvasEvents() {
         }
     });
     
-    // 鼠标移动时预览曲线
+    // 鼠标移动时更新绘制预览
     canvas.addEventListener('mousemove', (e) => {
-        if (ManimEditor.isCurveDrawing && ManimEditor.curvePoints.length > 0) {
+        if (ManimEditor.drawingState && ManimEditor.drawingState.points) {
             const rect = canvas.getBoundingClientRect();
             const canvasX = e.clientX - rect.left;
             const canvasY = e.clientY - rect.top;
             const manimCoord = ManimEditor.canvasToManim(canvasX, canvasY);
             
-            // 更新预览
-            ManimEditor.curvePreviewPoint = [manimCoord.x, manimCoord.y, 0];
+            // 更新预览点（通用）
+            ManimEditor.previewPoint = [manimCoord.x, manimCoord.y, 0];
             render();
         }
     });
@@ -559,59 +601,60 @@ function calculateFixedPoint(element, corner, originalProps) {
 }
 
 /**
- * 处理曲线的点击绘制
+ * 处理点击式绘制（通用）
  */
-function handleCurveClick(canvasX, canvasY) {
+function handleClickDrawing(canvasX, canvasY) {
+    const plugin = ManimEditor.shapeRegistry[ManimEditor.currentShapeType];
+    if (!plugin || !plugin.onDrawClick) {
+        console.error('插件未实现onDrawClick');
+        return;
+    }
+    
     const manimCoord = ManimEditor.canvasToManim(canvasX, canvasY);
     const point = [manimCoord.x, manimCoord.y, 0];
     
-    if (!ManimEditor.isCurveDrawing) {
-        // 开始绘制曲线，清除选中状态
+    // 第一次点击
+    if (!ManimEditor.drawingState) {
         ManimEditor.selectedElement = null;
         hidePropertyPanel();
-        
-        ManimEditor.isCurveDrawing = true;
-        ManimEditor.curvePoints = [point];
-        console.log('曲线绘制开始，放置P0（起点）');
-    } else if (ManimEditor.curvePoints.length === 1) {
-        // 放置第一个控制点
-        ManimEditor.curvePoints.push(point);
-        console.log('放置P1（控制点1）');
-    } else if (ManimEditor.curvePoints.length === 2) {
-        // 放置第二个控制点
-        ManimEditor.curvePoints.push(point);
-        console.log('放置P2（控制点2）');
-    } else if (ManimEditor.curvePoints.length === 3) {
-        // 放置终点，完成曲线
-        ManimEditor.curvePoints.push(point);
-        console.log('放置P3（终点），曲线完成');
-        
-        // 创建曲线元素
-        const curve = {
-            type: 'curve',
-            name: 'curve_' + (ManimEditor.elements.length + 1),
-            props: {
-                points: [...ManimEditor.curvePoints],
-                color: '#9b59b6',
-                stroke_width: 2,
-                smoothness: 1,
-                hidden: false
-            }
-        };
-        
-        addElement(curve);
-        
-        // 重置曲线绘制状态
-        ManimEditor.isCurveDrawing = false;
-        ManimEditor.curvePoints = [];
-        ManimEditor.curvePreviewPoint = null;
-        
-        // 自动退出绘制模式
+    }
+    
+    // 调用插件处理点击
+    const result = plugin.onDrawClick(ManimEditor.drawingState, point, ManimEditor);
+    
+    if (result.continue) {
+        // 继续绘制
+        ManimEditor.drawingState = result.state;
+    } else if (result.element) {
+        // 完成绘制
+        addElement(result.element);
+        ManimEditor.drawingState = null;
+        ManimEditor.previewPoint = null;
         setSelectMode();
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     }
     
     render();
+}
+
+/**
+ * 完成点击式绘制（双击）
+ */
+function finishClickDrawing() {
+    const plugin = ManimEditor.shapeRegistry[ManimEditor.currentShapeType];
+    if (!plugin || !plugin.onDrawDoubleClick) return;
+    
+    // 调用插件处理双击
+    const element = plugin.onDrawDoubleClick(ManimEditor.drawingState, ManimEditor);
+    
+    if (element) {
+        addElement(element);
+        ManimEditor.drawingState = null;
+        ManimEditor.previewPoint = null;
+        setSelectMode();
+        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+        render();
+    }
 }
 
 /**
@@ -813,10 +856,24 @@ function addPropertyField(container, element, key, label, type, options) {
             value = key in element.props ? element.props[key] : element[key];
         }
         
+        // 关键改进：对浮点数四舍五入到2位小数
+        if (type === 'number' && typeof value === 'number') {
+            value = Math.round(value * 100) / 100;  // 保留2位小数
+        }
+        
         input.value = value !== undefined ? value : '';
         
         if (type === 'number') {
-            input.step = '0.1';
+            // 使用属性定义中的 step 值，如果没有则默认 0.01
+            input.step = options?.step !== undefined ? options.step : '0.01';
+            
+            // 设置 min 和 max（如果有）
+            if (options?.min !== undefined) {
+                input.min = options.min;
+            }
+            if (options?.max !== undefined) {
+                input.max = options.max;
+            }
         }
     }
     
@@ -839,8 +896,10 @@ function addPropertyField(container, element, key, label, type, options) {
         
         if (key === 'name') {
             element.name = value;
+            render();
         } else if (key === 'hidden') {
             element.props.hidden = value;
+            render();
         } else if (key.includes('[')) {
             // 处理数组属性，例如 start[0], start[1]
             const match = key.match(/(\w+)\[(\d+)\]/);
@@ -852,11 +911,12 @@ function addPropertyField(container, element, key, label, type, options) {
                 }
                 element.props[arrayKey][index] = value;
             }
+            render();
         } else {
-            element.props[key] = value;
+            // 使用 updateElement() 而不是直接修改（触发智能更新）
+            const newProps = { [key]: value };
+            updateElement(element.id, newProps);
         }
-        
-        render();
     });
     
     group.appendChild(input);

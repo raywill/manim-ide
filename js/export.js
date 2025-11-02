@@ -116,6 +116,10 @@ function hexToManimColor(hex) {
  * 格式化数字（移除不必要的小数位）
  */
 function formatNumber(num, precision = 2) {
+    // 处理 null, undefined, NaN
+    if (num == null || isNaN(num)) {
+        return '0';
+    }
     if (Number.isInteger(num)) {
         return num.toString();
     }

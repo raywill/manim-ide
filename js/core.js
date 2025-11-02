@@ -13,7 +13,7 @@ const ManimEditor = {
     ctx: null,
     
     // 数据存储
-    elements: [],           // 所有元素
+    elements: [],           // 所有元素（按 z_order 排序）
     selectedElement: null,  // 当前选中的元素
     
     // 形状插件注册表
@@ -37,6 +37,10 @@ const ManimEditor = {
     isDrawing: false,
     drawStart: null,
     tempElement: null,
+    
+    // 通用绘制状态（插件化v2.1）
+    drawingState: null,  // 插件自定义的绘制状态
+    previewPoint: null,  // 鼠标预览点
     
     // Manim坐标系参数（Y轴向上）
     canvasToManim: function(canvasX, canvasY) {
@@ -160,6 +164,11 @@ function registerShape(config) {
         getControlPoints: config.getControlPoints,
         updateControlPoint: config.updateControlPoint,
         
+        // v2.1新增：点击式绘制支持
+        onDrawClick: config.onDrawClick,
+        onDrawDoubleClick: config.onDrawDoubleClick,
+        renderDrawingPreview: config.renderDrawingPreview,
+        
         // 配置
         properties: config.properties || [],
         capabilities: config.capabilities || {},
@@ -195,6 +204,9 @@ function initCanvas() {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     
+    // 初始化元素顺序
+    updateElementsOrder();
+    
     // 绘制初始画布
     render();
 }
@@ -210,6 +222,21 @@ function resizeCanvas() {
 }
 
 /**
+ * 更新元素顺序（按 z_order 排序）
+ * 只在添加/删除/修改 z_order 时调用
+ */
+function updateElementsOrder() {
+    // 直接排序 elements 数组（ES2019+ 稳定排序）
+    // 稳定性：相同 z_order 的元素保持原有顺序（按添加时间）
+    ManimEditor.elements.sort((a, b) => {
+        const zOrderA = a.props.z_order !== undefined ? a.props.z_order : 0;
+        const zOrderB = b.props.z_order !== undefined ? b.props.z_order : 0;
+        return zOrderA - zOrderB;  // 稳定排序：小 → 大
+    });
+    console.log('[Performance] Elements reordered by z_order');
+}
+
+/**
  * 渲染整个场景
  */
 function render() {
@@ -222,10 +249,9 @@ function render() {
     // 绘制坐标系原点标记
     drawOrigin(ctx, canvas);
     
-    // 绘制所有元素
+    // 绘制所有元素（elements 已按 z_order 排序）
     ManimEditor.elements.forEach(element => {
-        if (element.props.hidden) return;
-        
+        // 不要跳过hidden元素！让插件的setRenderOpacity处理透明度
         const plugin = ManimEditor.shapeRegistry[element.type];
         if (plugin && plugin.render) {
             ctx.save();
@@ -246,6 +272,17 @@ function render() {
             ctx.save();
             ctx.globalAlpha = 0.6;
             plugin.render(ctx, ManimEditor.tempElement, ManimEditor);
+            ctx.restore();
+        }
+    }
+    
+    // 插件化v2.1：绘制预览（支持点击式绘制）
+    if (ManimEditor.currentShapeType && ManimEditor.drawingState) {
+        const plugin = ManimEditor.shapeRegistry[ManimEditor.currentShapeType];
+        console.log(`[render] 绘制预览: type=${ManimEditor.currentShapeType}, hasPreview=${!!plugin?.renderDrawingPreview}`);
+        if (plugin && plugin.renderDrawingPreview) {
+            ctx.save();
+            plugin.renderDrawingPreview(ctx, ManimEditor.drawingState, ManimEditor);
             ctx.restore();
         }
     }
@@ -415,6 +452,7 @@ function addElement(element) {
     element.id = element.id || ManimEditor.generateId();
     element.name = element.name || `${element.type}_${ManimEditor.elements.length + 1}`;
     ManimEditor.elements.push(element);
+    updateElementsOrder();  // 重新排序
     saveToHistory();
     render();
     return element;
@@ -443,7 +481,21 @@ function deleteElement(elementId) {
 function updateElement(elementId, newProps) {
     const element = ManimEditor.elements.find(e => e.id === elementId);
     if (element) {
+        console.log('[updateElement] Before:', JSON.stringify(element.props));
+        console.log('[updateElement] newProps:', JSON.stringify(newProps));
+        
+        const oldZOrder = element.props.z_order;
         element.props = { ...element.props, ...newProps };
+        
+        console.log('[updateElement] After:', JSON.stringify(element.props));
+        
+        // 只有 z_order 变化时才更新排序缓存（性能优化）
+        const newZOrder = element.props.z_order;
+        if (oldZOrder !== newZOrder) {
+            console.log('[updateElement] z_order changed, reordering elements');
+            updateElementsOrder();
+        }
+        
         saveToHistory();
         render();
         return true;
@@ -455,7 +507,8 @@ function updateElement(elementId, newProps) {
  * 查找点击位置的元素
  */
 function findElementAtPoint(x, y) {
-    // 从后往前查找（后绘制的在上面）
+    // 从上层往下层查找（反向遍历，z_order 从大到小）
+    // elements 已按 z_order 从小到大排序，反向遍历即从大到小
     for (let i = ManimEditor.elements.length - 1; i >= 0; i--) {
         const element = ManimEditor.elements[i];
         const plugin = ManimEditor.shapeRegistry[element.type];
@@ -506,6 +559,7 @@ function undo() {
         ManimEditor.elements = JSON.parse(JSON.stringify(
             ManimEditor.history[ManimEditor.historyIndex]
         ));
+        updateElementsOrder();  // 重新排序
         render();
         updateUndoRedoButtons();
     }
@@ -520,6 +574,7 @@ function redo() {
         ManimEditor.elements = JSON.parse(JSON.stringify(
             ManimEditor.history[ManimEditor.historyIndex]
         ));
+        updateElementsOrder();  // 重新排序
         render();
         updateUndoRedoButtons();
     }
@@ -559,10 +614,20 @@ function loadFromLocalStorage() {
         if (data) {
             const parsed = JSON.parse(data);
             if (parsed.elements && Array.isArray(parsed.elements)) {
-                ManimEditor.elements = parsed.elements;
+                // 数据升级：让每个插件负责升级自己的属性
+                ManimEditor.elements = parsed.elements.map(element => {
+                    const plugin = ManimEditor.shapeRegistry[element.type];
+                    if (plugin && plugin.onUpgrade) {
+                        // 插件定义了升级方法，调用它
+                        element.props = plugin.onUpgrade(element.props);
+                        console.log(`[Data Migration] ${element.type} upgraded`);
+                    }
+                    return element;
+                });
+                updateElementsOrder();  // 更新排序缓存
                 saveToHistory();
                 render();
-                console.log('Loaded scene from localStorage');
+                console.log('Loaded scene from localStorage (with data upgrade)');
             }
         }
     } catch (e) {
@@ -637,7 +702,17 @@ function importFromJSON(jsonData) {
         const data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
         
         if (data.elements && Array.isArray(data.elements)) {
-            ManimEditor.elements = data.elements;
+            // 数据升级：让每个插件负责升级自己的属性
+            ManimEditor.elements = data.elements.map(element => {
+                const plugin = ManimEditor.shapeRegistry[element.type];
+                if (plugin && plugin.onUpgrade) {
+                    // 插件定义了升级方法，调用它
+                    element.props = plugin.onUpgrade(element.props);
+                    console.log(`[Data Migration] ${element.type} upgraded`);
+                }
+                return element;
+            });
+            updateElementsOrder();  // 更新排序缓存
             ManimEditor.selectedElement = null;
             saveToHistory();
             render();

@@ -17,8 +17,10 @@ registerShape({
                 y: y || 0,
                 width: 2,
                 height: 1,
-                color: '#3498db',
-                opacity: 1,
+                fill_color: '#3498db',    // 填充色
+                stroke_color: '#2c3e50',  // 边框色
+                fill_opacity: 1,          // 填充透明度（0=无填充）
+                stroke_width: 2,
                 hidden: false
             }
         };
@@ -30,19 +32,29 @@ registerShape({
         const width = (props.width || 2) * 50;
         const height = (props.height || 1) * 50;
         
-        ctx.fillStyle = props.color || '#3498db';
-        ctx.globalAlpha = props.opacity !== undefined ? props.opacity : 1;
-        ctx.strokeStyle = '#2c3e50';
-        ctx.lineWidth = 2;
-        
         const x = pos.x - width / 2;
         const y = pos.y - height / 2;
         
-        ctx.fillRect(x, y, width, height);
+        // 处理hidden：透明度0.1而非完全隐藏
+        setRenderOpacity(ctx, element);
+        
+        // 绘制填充（如果fill_opacity > 0）
+        const fillOpacity = props.fill_opacity !== undefined ? props.fill_opacity : 1;
+        if (fillOpacity > 0) {
+            ctx.fillStyle = props.fill_color || props.color || '#3498db';
+            const savedAlpha = ctx.globalAlpha;
+            ctx.globalAlpha = savedAlpha * fillOpacity;  // 叠加fill_opacity
+            ctx.fillRect(x, y, width, height);
+            ctx.globalAlpha = savedAlpha;
+        }
+        
+        // 绘制边框
+        ctx.strokeStyle = props.stroke_color || '#2c3e50';
+        ctx.lineWidth = props.stroke_width || 2;
         ctx.strokeRect(x, y, width, height);
         
         // 绘制中心点
-        ctx.fillStyle = '#e74c3c';
+        ctx.fillStyle = '#95a5a6';
         ctx.globalAlpha = 0.7;
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
@@ -63,19 +75,31 @@ registerShape({
         const varName = sanitizeVariableName(element.name);
         const width = formatNumber(props.width || 2);
         const height = formatNumber(props.height || 1);
-        const color = hexToManimColor(props.color || '#3498db');
         const x = formatNumber(props.x);
         const y = formatNumber(props.y);
         
-        let code = `${varName} = Rectangle(width=${width}, height=${height}, color=${color})`;
+        // 使用fill_color或回退到color
+        const fillColor = hexToManimColor(props.fill_color || props.color || '#3498db');
+        const strokeColor = hexToManimColor(props.stroke_color || '#2c3e50');
         
+        let code = `${varName} = Rectangle(width=${width}, height=${height})`;
+        
+        // 移动到位置
         if (props.x !== 0 || props.y !== 0) {
             code += `.move_to([${x}, ${y}, 0])`;
         }
         
-        if (props.opacity !== undefined && props.opacity !== 1) {
-            code += `.set_opacity(${formatNumber(props.opacity)})`;
+        // 设置填充
+        const fillOpacity = props.fill_opacity !== undefined ? props.fill_opacity : 1;
+        if (fillOpacity > 0) {
+            code += `.set_fill(${fillColor}, ${formatNumber(fillOpacity)})`;
+        } else {
+            code += `.set_fill(opacity=0)`;  // 无填充
         }
+        
+        // 设置边框
+        const strokeWidth = formatNumber(props.stroke_width || 2);
+        code += `.set_stroke(${strokeColor}, width=${strokeWidth})`;
         
         return code;
     },
@@ -164,12 +188,14 @@ registerShape({
     },
     
     properties: [
-        { key: 'x', label: 'X坐标', type: 'number' },
-        { key: 'y', label: 'Y坐标', type: 'number' },
-        { key: 'width', label: '宽度', type: 'number' },
-        { key: 'height', label: '高度', type: 'number' },
-        { key: 'color', label: '颜色', type: 'color' },
-        { key: 'opacity', label: '不透明度', type: 'number' }
+        { key: 'x', label: 'X坐标', type: 'number', step: 0.01 },
+        { key: 'y', label: 'Y坐标', type: 'number', step: 0.01 },
+        { key: 'width', label: '宽度', type: 'number', step: 0.01, min: 0.1 },
+        { key: 'height', label: '高度', type: 'number', step: 0.01, min: 0.1 },
+        { key: 'fill_color', label: '填充色', type: 'color' },
+        { key: 'fill_opacity', label: '填充透明度', type: 'number', step: 0.1, min: 0, max: 1 },
+        { key: 'stroke_color', label: '边框色', type: 'color' },
+        { key: 'stroke_width', label: '边框宽度', type: 'number', step: 0.1, min: 0.5 }
     ]
 });
 

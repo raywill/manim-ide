@@ -23,6 +23,7 @@ registerShape({
                 height: 2,           // 外接矩形高度（正=开口向下，负=开口向上）
                 color: '#f39c12',
                 opacity: 1,
+                z_order: 0,
                 hidden: false
             }
         };
@@ -226,6 +227,12 @@ registerShape({
         code += `x_range=[${formatNumber(xStart)}, ${formatNumber(xEnd)}], `;
         code += `color=${color})`;
         
+        // 设置 z-index
+        const zOrder = props.z_order !== undefined ? props.z_order : 0;
+        if (zOrder !== 0) {
+            code += `.set_z_index(${zOrder})`;
+        }
+        
         return code;
     },
     
@@ -235,7 +242,8 @@ registerShape({
         { key: 'width', label: '宽度', type: 'number', step: 0.1, min: 0.1 },
         { key: 'height', label: '高度', type: 'number', step: 0.1 },
         { key: 'color', label: '颜色', type: 'color' },
-        { key: 'opacity', label: '不透明度', type: 'number', step: 0.1, min: 0, max: 1 }
+        { key: 'opacity', label: '不透明度', type: 'number', step: 0.1, min: 0, max: 1 },
+        { key: 'z_order', label: 'Z序', type: 'number', step: 1 }
     ]
 });
 

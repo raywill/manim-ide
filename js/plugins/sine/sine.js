@@ -26,6 +26,7 @@ registerShape({
                 x_end: Math.PI,      // X范围终点
                 samples: 100,        // 采样点数
                 color: '#e74c3c',
+                z_order: 0,
                 hidden: false
             }
         };
@@ -213,6 +214,12 @@ registerShape({
             code += `.shift([${formatNumber(props.x)}, ${formatNumber(props.y)}, 0])`;
         }
         
+        // 设置 z-index
+        const zOrder = props.z_order !== undefined ? props.z_order : 0;
+        if (zOrder !== 0) {
+            code += `.set_z_index(${zOrder})`;
+        }
+        
         return code;
     },
     
@@ -224,7 +231,8 @@ registerShape({
         { key: 'phase', label: '相位', type: 'number', step: 0.1 },
         { key: 'x_start', label: 'X起点', type: 'number', step: 0.1 },
         { key: 'x_end', label: 'X终点', type: 'number', step: 0.1 },
-        { key: 'color', label: '颜色', type: 'color' }
+        { key: 'color', label: '颜色', type: 'color' },
+        { key: 'z_order', label: 'Z序', type: 'number', step: 1 }
     ]
 });
 
