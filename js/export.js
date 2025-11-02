@@ -24,6 +24,25 @@ class GeneratedScene(Scene):
 class GeneratedScene(Scene):
     def construct(self):
 `;
+
+    // 如果UI场景边界有缩放，使Manim相机视口与IDE一致
+    const sceneScale = ManimEditor.sceneDisplayScale || 1.0;
+    if (sceneScale !== 1.0) {
+        const frameWidth = 14.22 * sceneScale;
+        const frameHeight = 8 * sceneScale;
+        code += `        # 调整相机视口以匹配IDE场景边界（兼容无 frame 的相机）\n`;
+        code += `        try:\n`;
+        code += `            self.camera.frame.set(width=${formatNumber(frameWidth)}, height=${formatNumber(frameHeight)})\n`;
+        code += `        except Exception:\n`;
+        code += `            self.camera.frame_width = ${formatNumber(frameWidth)}\n`;
+        code += `            self.camera.frame_height = ${formatNumber(frameHeight)}\n`;
+    }
+    // 统一设置背景为白色（兼容不同Manim版本）
+    code += `        # 统一设置场景背景为白色\n`;
+    code += `        try:\n`;
+    code += `            self.camera.set_background_color(WHITE)\n`;
+    code += `        except Exception:\n`;
+    code += `            self.camera.background_color = WHITE\n`;
     
     // 为每个元素生成代码
     elements.forEach(element => {

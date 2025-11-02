@@ -766,6 +766,46 @@ function initPropertyPanel() {
             hidePropertyPanel();
         }
     });
+
+    // 拖动属性面板（拖拽区域：面板头部）
+    const panel = document.getElementById('property-panel');
+    const header = panel ? panel.querySelector('.panel-header') : null;
+    if (panel && header) {
+        let isDraggingPanel = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        header.style.cursor = 'move';
+        header.addEventListener('mousedown', (e) => {
+            isDraggingPanel = true;
+            const rect = panel.getBoundingClientRect();
+            dragOffsetX = e.clientX - rect.left;
+            dragOffsetY = e.clientY - rect.top;
+            // 从右侧停靠切换为绝对定位
+            panel.style.right = 'auto';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDraggingPanel) return;
+            const viewportW = window.innerWidth;
+            const viewportH = window.innerHeight;
+            const panelRect = panel.getBoundingClientRect();
+            let left = e.clientX - dragOffsetX;
+            let top = e.clientY - dragOffsetY;
+            // 约束在视口内
+            left = Math.max(0, Math.min(left, viewportW - panelRect.width));
+            top = Math.max(0, Math.min(top, viewportH - 40));
+            panel.style.left = left + 'px';
+            panel.style.top = top + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!isDraggingPanel) return;
+            isDraggingPanel = false;
+            document.body.style.userSelect = '';
+        });
+    }
 }
 
 /**
@@ -774,7 +814,7 @@ function initPropertyPanel() {
 function showPropertyPanel(element) {
     const panel = document.getElementById('property-panel');
     const content = document.getElementById('property-content');
-    
+
     panel.classList.remove('hidden');
     
     // 生成属性表单
@@ -937,6 +977,10 @@ function updatePropertyPanel(element) {
 function hidePropertyPanel() {
     const panel = document.getElementById('property-panel');
     panel.classList.add('hidden');
+    // 关闭时清除拖拽产生的定位，确保下次打开回到默认位置
+    panel.style.left = '';
+    panel.style.top = '';
+    panel.style.right = '';
     ManimEditor.selectedElement = null;
     render();
 }
@@ -989,7 +1033,7 @@ function initKeyboardShortcuts() {
             }
         }
         
-        // Escape: 取消选择/关闭面板/退出绘制模式（即使在输入框中也响应）
+        // Escape: 取消选择/关闭面板/退出绘制模式/关闭导出弹窗（即使在输入框中也响应）
         if (e.key === 'Escape') {
             // 如果在输入框中，先失焦
             if (isInputFocused) {
@@ -998,6 +1042,11 @@ function initKeyboardShortcuts() {
             setSelectMode();
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
             hidePropertyPanel();
+            // 关闭导出弹窗
+            const exportModal = document.getElementById('export-modal');
+            if (exportModal && !exportModal.classList.contains('hidden')) {
+                hideExportModal();
+            }
         }
     });
 }

@@ -90,7 +90,7 @@ registerShape({
 
         const { center, radius, startAngle, endAngle, isClockwise } = circleInfo;
         const centerCanvas = editor.manimToCanvas(center.x, center.y);
-        const radiusPixels = radius * 50;
+        const radiusPixels = radius * editor.pxPerUnit;
 
         setRenderOpacity(ctx, element);
 
@@ -214,7 +214,7 @@ registerShape({
             if (circleInfo) {
                 const { center, radius, startAngle, endAngle, isClockwise } = circleInfo;
                 const centerCanvas = editor.manimToCanvas(center.x, center.y);
-                const radiusPixels = radius * 50;
+                const radiusPixels = radius * editor.pxPerUnit;
                 const startRad = -startAngle * Math.PI / 180;
                 const endRad = -endAngle * Math.PI / 180;
                 const anticlockwise = isClockwise;

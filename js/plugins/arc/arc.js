@@ -98,7 +98,7 @@ registerShape({
         
         const { center, radius, startAngle, endAngle, isClockwise } = circleInfo;
         const centerCanvas = editor.manimToCanvas(center.x, center.y);
-        const radiusPixels = radius * 50;
+        const radiusPixels = radius * editor.pxPerUnit;
         
         setRenderOpacity(ctx, element);
         
@@ -243,7 +243,7 @@ registerShape({
             if (circleInfo) {
                 const { center, radius, startAngle, endAngle, isClockwise } = circleInfo;
                 const centerCanvas = editor.manimToCanvas(center.x, center.y);
-                const radiusPixels = radius * 50;
+                const radiusPixels = radius * editor.pxPerUnit;
                 
                 const startRad = -startAngle * Math.PI / 180;
                 const endRad = -endAngle * Math.PI / 180;
@@ -328,7 +328,7 @@ registerShape({
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         // 检查是否在圆弧线上（径向范围）
-        const strokeWidthManim = strokeWidth / 50;
+        const strokeWidthManim = strokeWidth / (editor.pxPerUnit || 50);
         const tolerance = Math.max(strokeWidthManim, 0.3);
         
         if (Math.abs(distance - radius) > tolerance) {

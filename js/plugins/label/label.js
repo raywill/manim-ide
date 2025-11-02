@@ -188,7 +188,7 @@ registerShape({
         const oldSize = Math.max(bounds.w, bounds.h);
         const newW = Math.abs(currentPoint.x - fixedPoint.x);
         const newH = Math.abs(currentPoint.y - fixedPoint.y);
-        const newSize = Math.max(newW * 50, newH * 50); // 转像素估算
+        const newSize = Math.max(newW * editor.pxPerUnit, newH * editor.pxPerUnit); // 转像素估算
         const scale = Math.max(0.1, newSize / Math.max(1e-6, oldSize));
         const newFont = Math.max(6, (p.font_size !== undefined ? p.font_size : LABEL_DEFAULTS.font_size) * scale);
 
@@ -242,7 +242,8 @@ registerShape({
         const z = p.z_order !== undefined ? p.z_order : LABEL_DEFAULTS.z_order;
 
         if (bgOpacity > 0) {
-            code += `\n${varName}_bg = SurroundingRectangle(${varName}_core, color=${bgColor}, fill_color=${bgColor}, fill_opacity=${formatNumber(bgOpacity)}, buff=${formatNumber(padding/50)})`;
+            const ppu = ManimEditor.pxPerUnit; // 全局保证为有效数字
+            code += `\n${varName}_bg = SurroundingRectangle(${varName}_core, color=${bgColor}, fill_color=${bgColor}, fill_opacity=${formatNumber(bgOpacity)}, buff=${formatNumber(padding/ppu)})`;
             if (z !== 0) code += `.set_z_index(${z - 1})`;
             // 分组：主对象=VGroup，导出时 self.add(varName) 即可将文本与背景一起加入
             code += `\n${varName} = VGroup(${varName}_core, ${varName}_bg)`;

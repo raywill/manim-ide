@@ -43,7 +43,7 @@ registerShape({
         // 关键优化：增加采样点数，使曲线更平滑
         // 每像素至少2个采样点
         const xRangeManim = Math.abs(xEnd - xStart);
-        const xRangePixels = xRangeManim * 50;
+        const xRangePixels = xRangeManim * editor.pxPerUnit;
         const optimalSamples = Math.max(200, Math.floor(xRangePixels * 2));
         const samples = Math.min(optimalSamples, 500);  // 最多500个点
         

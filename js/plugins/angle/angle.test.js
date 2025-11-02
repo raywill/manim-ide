@@ -9,6 +9,7 @@ global.ManimEditor = {
     coordSystem: {
         props: { x_range: [-7, 7, 1], y_range: [-7, 7, 1] }
     },
+    pxPerUnit: 50,
     manimToCanvas: function(manimX, manimY) {
         const xRange = this.coordSystem.props.x_range;
         const yRange = this.coordSystem.props.y_range;

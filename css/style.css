@@ -261,7 +261,7 @@ button:disabled {
     position: fixed;
     right: 0;
     top: 60px;
-    width: 300px;
+    width: 260px;
     height: calc(100vh - 60px);
     background-color: #ecf0f1;
     border-left: 1px solid #bdc3c7;
@@ -450,7 +450,7 @@ button:disabled {
     }
     
     #property-panel {
-        width: 250px;
+        width: 220px;
     }
     
     .tool-btn .label {

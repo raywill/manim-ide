@@ -32,6 +32,9 @@ const ManimEditor = {
     viewOffset: { x: 0, y: 0 },
     zoom: 1,
     gridSize: 20,
+    // 每个Manim单位对应的像素数（影响IDE显示，不影响导出）
+    pxPerUnit: 70,
+    sceneDisplayScale: 1.0, // UI中场景边界显示缩放，不影响坐标换算
     
     // 临时绘制状态
     isDrawing: false,
@@ -47,8 +50,8 @@ const ManimEditor = {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
         return {
-            x: (canvasX - centerX) / 50,  // 50像素 = 1 Manim单位
-            y: (centerY - canvasY) / 50   // Y轴反转
+            x: (canvasX - centerX) / this.pxPerUnit,
+            y: (centerY - canvasY) / this.pxPerUnit
         };
     },
     
@@ -56,8 +59,8 @@ const ManimEditor = {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
         return {
-            x: centerX + manimX * 50,
-            y: centerY - manimY * 50
+            x: centerX + manimX * this.pxPerUnit,
+            y: centerY - manimY * this.pxPerUnit
         };
     },
     
@@ -314,10 +317,11 @@ function drawOrigin(ctx, canvas) {
     const centerY = canvas.height / 2;
     
     // 绘制Manim场景边界（默认16:9比例，宽14.22单位，高8单位）
-    // 仅用于UI可视的边框展示，可按比例放大，导出与坐标映射不受影响
-    const SCENE_DISPLAY_SCALE = 1.10; // 轻微扩大10%
-    const sceneWidth = 14.22 * 50 * SCENE_DISPLAY_SCALE;  // 14.22 Manim单位（可视放大）
-    const sceneHeight = 8 * 50 * SCENE_DISPLAY_SCALE;     // 8 Manim单位（可视放大）
+    // 仅用于UI可视的边框展示，可按比例放大
+    const sceneScale = ManimEditor.sceneDisplayScale || 1.0;
+    const px = ManimEditor.pxPerUnit;
+    const sceneWidth = 14.22 * px * sceneScale;  // 14.22 Manim单位（可视放大）
+    const sceneHeight = 8 * px * sceneScale;     // 8 Manim单位（可视放大）
     
     ctx.strokeStyle = '#95a5a6';
     ctx.lineWidth = 2;

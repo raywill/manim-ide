@@ -36,8 +36,8 @@ registerShape({
         const xMax = xRange[1];
         const yMin = yRange[0];
         const yMax = yRange[1];
-        const xLength = (props.x_length || 6) * 50; // 总长度（像素）
-        const yLength = (props.y_length || 6) * 50;
+        const xLength = (props.x_length || 6) * editor.pxPerUnit; // 总长度（像素）
+        const yLength = (props.y_length || 6) * editor.pxPerUnit;
         
         // 计算0点在坐标轴上的位置（不一定在中心）
         // 0点在X轴上的位置：从min到0的比例
@@ -220,8 +220,8 @@ registerShape({
     getBounds: function(element, editor) {
         const props = element.props;
         const pos = editor.manimToCanvas(props.x, props.y);
-        const w = (props.x_length || 6) * 50;
-        const h = (props.y_length || 6) * 50;
+        const w = (props.x_length || 6) * editor.pxPerUnit;
+        const h = (props.y_length || 6) * editor.pxPerUnit;
         return { x: pos.x - w/2, y: pos.y - h/2, w, h };
     },
     

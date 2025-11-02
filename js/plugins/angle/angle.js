@@ -105,7 +105,7 @@ registerShape({
 
         // 画弧：中心B
         const centerCanvas = editor.manimToCanvas(info.center.x, info.center.y);
-        const radiusPixels = info.radius * 50;
+        const radiusPixels = info.radius * editor.pxPerUnit;
         const startRad = -info.startDeg * Math.PI / 180;
         const endRad = -info.endDeg * Math.PI / 180;
         const anticlockwise = info.clockwise; // 画布Y轴反转，方向取同 arc/sector 的处理
@@ -213,7 +213,7 @@ registerShape({
             const ratio = ANGLE_DEFAULTS.radius_ratio;
             const info = computeAngleArcInfo(state.pointA || previewPoint, state.pointB, previewPoint, ratio);
             const centerCanvas = editor.manimToCanvas(info.center.x, info.center.y);
-            const radiusPixels = info.radius * 50;
+            const radiusPixels = info.radius * editor.pxPerUnit;
             const startRad = -info.startDeg * Math.PI / 180;
             const endRad = -info.endDeg * Math.PI / 180;
             const anticlockwise = info.clockwise;
@@ -284,7 +284,8 @@ registerShape({
         const dy = manimY - info.center.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const r = info.radius;
-        const tolerance = Math.max(p.stroke_width !== undefined ? p.stroke_width / 50 : ANGLE_DEFAULTS.stroke_width / 50, 0.3);
+        const ppu = editor.pxPerUnit;
+        const tolerance = Math.max(p.stroke_width !== undefined ? p.stroke_width / ppu : ANGLE_DEFAULTS.stroke_width / ppu, 0.3);
         // 先检测弧
         if (Math.abs(distance - r) <= tolerance) {
             let ang = Math.atan2(dy, dx) * 180 / Math.PI;
@@ -310,7 +311,7 @@ registerShape({
             const projy = y1 + t * vy;
             return Math.hypot(px - projx, py - projy);
         }
-        const tLine = Math.max(0.3, (p.stroke_width !== undefined ? p.stroke_width : ANGLE_DEFAULTS.stroke_width) / 50);
+        const tLine = Math.max(0.3, (p.stroke_width !== undefined ? p.stroke_width : ANGLE_DEFAULTS.stroke_width) / ppu);
         const dBA = distPointToSegment(manimX, manimY, p.pointB[0], p.pointB[1], p.pointA[0], p.pointA[1]);
         if (dBA <= tLine) return true;
         const dBC = distPointToSegment(manimX, manimY, p.pointB[0], p.pointB[1], p.pointC[0], p.pointC[1]);

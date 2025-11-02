@@ -42,7 +42,7 @@ registerShape({
         const n = Math.max(3, Math.min(512, Math.floor(props.n || 6)));
         
         const center = editor.manimToCanvas(x, y);
-        const radiusPixels = radius * 50;
+        const radiusPixels = radius * editor.pxPerUnit;
         
         setRenderOpacity(ctx, element);
         
