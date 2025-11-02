@@ -1,0 +1,442 @@
+/* 全局样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    overflow: hidden;
+    background-color: #f5f5f5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 顶部工具栏 */
+#toolbar {
+    background-color: #2c3e50;
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    z-index: 100;
+}
+
+#toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.toolbar-left,
+.toolbar-center,
+.toolbar-right {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    background-color: #34495e;
+    color: white;
+    transition: all 0.2s;
+}
+
+button:hover {
+    background-color: #405163;
+    transform: translateY(-1px);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+button.primary {
+    background-color: #3498db;
+}
+
+button.primary:hover {
+    background-color: #2980b9;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 主容器 */
+#main-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* 左侧工具箱 */
+#toolbox {
+    width: 200px;
+    background-color: #ecf0f1;
+    padding: 15px;
+    overflow-y: auto;
+    border-right: 1px solid #bdc3c7;
+}
+
+#toolbox h3 {
+    font-size: 16px;
+    margin-bottom: 15px;
+    color: #2c3e50;
+}
+
+#toolbox h4 {
+    font-size: 14px;
+    margin: 15px 0 10px;
+    color: #34495e;
+}
+
+#shape-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tool-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background-color: white;
+    color: #2c3e50;
+    border: 2px solid #bdc3c7;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    text-align: left;
+}
+
+.tool-btn:hover {
+    background-color: #3498db;
+    color: white;
+    border-color: #3498db;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.tool-btn.active {
+    background-color: #2980b9;
+    color: white;
+    border-color: #2980b9;
+}
+
+.tool-btn .icon {
+    font-size: 20px;
+    min-width: 24px;
+    text-align: center;
+}
+
+.tool-btn .label {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.toolbox-section {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #bdc3c7;
+}
+
+/* 画布容器 */
+#canvas-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background-color: white;
+    background-image: 
+        linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+    background-size: 20px 20px;
+    cursor: default;
+}
+
+#main-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#canvas-container.draw-mode {
+    cursor: crosshair;
+}
+
+#canvas-container.move-mode {
+    cursor: move;
+}
+
+/* 辅助线 */
+#guide-lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 50;
+}
+
+.guide-line {
+    position: absolute;
+    background-color: rgba(52, 152, 219, 0.5);
+    display: none;
+}
+
+.guide-line.visible {
+    display: block;
+}
+
+#guide-vertical {
+    width: 1px;
+    height: 100%;
+    top: 0;
+}
+
+#guide-horizontal {
+    height: 1px;
+    width: 100%;
+    left: 0;
+}
+
+/* 坐标显示 */
+#coord-display {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background-color: rgba(44, 62, 80, 0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    pointer-events: none;
+    display: none;
+}
+
+#coord-display.visible {
+    display: block;
+}
+
+/* 右侧属性面板 */
+#property-panel {
+    width: 300px;
+    background-color: #ecf0f1;
+    border-left: 1px solid #bdc3c7;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease-in-out;
+}
+
+#property-panel.hidden {
+    transform: translateX(100%);
+    position: absolute;
+    right: 0;
+    height: 100%;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background-color: #34495e;
+    color: white;
+}
+
+.panel-header h3 {
+    font-size: 16px;
+}
+
+#close-panel-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+}
+
+#close-panel-btn:hover {
+    background-color: rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+
+#property-content {
+    padding: 15px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.property-group {
+    margin-bottom: 20px;
+}
+
+.property-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 5px;
+}
+
+.property-group input,
+.property-group select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #bdc3c7;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.property-group input[type="color"] {
+    height: 40px;
+    padding: 2px;
+}
+
+.property-group input[type="checkbox"] {
+    width: auto;
+    margin-right: 8px;
+}
+
+.property-row {
+    display: flex;
+    gap: 10px;
+}
+
+.property-row .property-group {
+    flex: 1;
+}
+
+/* 模态框 */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.modal-header h2 {
+    font-size: 20px;
+    color: #2c3e50;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #7f8c8d;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+}
+
+.close-btn:hover {
+    color: #2c3e50;
+    background-color: #ecf0f1;
+    border-radius: 4px;
+}
+
+.modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+#export-code-display {
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    padding: 15px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.modal-footer {
+    padding: 20px;
+    border-top: 1px solid #ecf0f1;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* 选中状态 */
+.selected {
+    outline: 2px solid #3498db;
+    outline-offset: 2px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    #toolbox {
+        width: 150px;
+        padding: 10px;
+    }
+    
+    #property-panel {
+        width: 250px;
+    }
+    
+    .tool-btn .label {
+        font-size: 12px;
+    }
+}
+
+/* 加载动画 */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.loading {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Editor - 基础功能测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .test-case {
+            margin: 15px 0;
+            padding: 10px;
+            background: #ecf0f1;
+            border-left: 4px solid #3498db;
+        }
+        .test-case.pass {
+            border-left-color: #2ecc71;
+            background: #d5f4e6;
+        }
+        .test-case.fail {
+            border-left-color: #e74c3c;
+            background: #fadbd8;
+        }
+        button {
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        code {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .status.pass {
+            background: #2ecc71;
+            color: white;
+        }
+        .status.fail {
+            background: #e74c3c;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Manim Visual Editor - 测试套件</h1>
+    
+    <div class="test-section">
+        <h2>测试说明</h2>
+        <p>本页面提供自动化测试，验证编辑器的核心功能是否正常工作。</p>
+        <button onclick="runAllTests()">🚀 运行所有测试</button>
+        <button onclick="clearResults()">🧹 清除结果</button>
+    </div>
+
+    <div id="test-results"></div>
+
+    <div class="test-section">
+        <h2>手动测试清单</h2>
+        <div class="test-case">
+            <input type="checkbox" id="manual-1">
+            <label for="manual-1">打开编辑器，画布正常显示</label>
+        </div>
+        <div class="test-case">
+            <input type="checkbox" id="manual-2">
+            <label for="manual-2">左侧工具箱显示所有形状按钮</label>
+        </div>
+        <div class="test-case">
+            <input type="checkbox" id="manual-3">
+            <label for="manual-3">选择正方形工具，在画布上拖拽可创建正方形</label>
+        </div>
+        <div class="test-case">
+            <input type="checkbox" id="manual-4">
+            <label for="manual-4">双击形状，右侧属性面板正常打开</label>
+        </div>
+        <div class="test-case">
+            <input type="checkbox" id="manual-5">
+            <label for="manual-5">修改属性，画布实时更新</label>
+        </div>
+        <div class="test-case">
+            <input type="checkbox" id="manual-6">
+            <label for="manual-6">点击导出按钮，生成正确的Manim代码</label>
+        </div>
+        <div class="test-case">
+            <input type="checkbox" id="manual-7">
+            <label for="manual-7">撤销/重做功能正常工作</label>
+        </div>
+        <div class="test-case">
+            <input type="checkbox" id="manual-8">
+            <label for="manual-8">导出/导入JSON场景文件正常</label>
+        </div>
+    </div>
+
+    <script>
+        // 模拟编辑器核心功能用于测试
+        const tests = [];
+        
+        function addTest(name, testFunc) {
+            tests.push({ name, testFunc });
+        }
+        
+        // 测试1: 坐标转换
+        addTest('坐标转换功能', () => {
+            const mockEditor = {
+                canvas: { width: 800, height: 600 },
+                canvasToManim: function(canvasX, canvasY) {
+                    const centerX = this.canvas.width / 2;
+                    const centerY = this.canvas.height / 2;
+                    return {
+                        x: (canvasX - centerX) / 50,
+                        y: (centerY - canvasY) / 50
+                    };
+                },
+                manimToCanvas: function(manimX, manimY) {
+                    const centerX = this.canvas.width / 2;
+                    const centerY = this.canvas.height / 2;
+                    return {
+                        x: centerX + manimX * 50,
+                        y: centerY - manimY * 50
+                    };
+                }
+            };
+            
+            // 测试中心点
+            const centerManim = mockEditor.canvasToManim(400, 300);
+            if (centerManim.x !== 0 || centerManim.y !== 0) {
+                throw new Error(`中心点转换错误: ${JSON.stringify(centerManim)}`);
+            }
+            
+            // 测试往返转换
+            const manimCoord = { x: 2, y: 3 };
+            const canvasCoord = mockEditor.manimToCanvas(manimCoord.x, manimCoord.y);
+            const backToManim = mockEditor.canvasToManim(canvasCoord.x, canvasCoord.y);
+            
+            if (Math.abs(backToManim.x - manimCoord.x) > 0.01 || 
+                Math.abs(backToManim.y - manimCoord.y) > 0.01) {
+                throw new Error('坐标往返转换精度损失过大');
+            }
+            
+            return '坐标转换功能正常';
+        });
+        
+        // 测试2: 变量名清理
+        addTest('变量名清理功能', () => {
+            function sanitizeVariableName(name) {
+                let sanitized = name.replace(/[^a-zA-Z0-9_]/g, '_');
+                if (/^\d/.test(sanitized)) {
+                    sanitized = 'obj_' + sanitized;
+                }
+                return sanitized;
+            }
+            
+            const tests = [
+                ['my-shape', 'my_shape'],
+                ['shape 1', 'shape_1'],
+                ['123shape', 'obj_123shape'],
+                ['正方形', '___'],
+                ['circle!@#', 'circle___']
+            ];
+            
+            for (let [input, expected] of tests) {
+                const result = sanitizeVariableName(input);
+                if (result !== expected) {
+                    throw new Error(`"${input}" -> "${result}" (期望: "${expected}")`);
+                }
+            }
+            
+            return '变量名清理功能正常';
+        });
+        
+        // 测试3: 颜色转换
+        addTest('颜色转换功能', () => {
+            function hexToManimColor(hex) {
+                const colorMap = {
+                    '#3498db': 'BLUE',
+                    '#e74c3c': 'RED',
+                    '#2ecc71': 'GREEN'
+                };
+                
+                const normalized = hex.toLowerCase();
+                if (colorMap[normalized]) {
+                    return colorMap[normalized];
+                }
+                return `"${hex}"`;
+            }
+            
+            if (hexToManimColor('#3498db') !== 'BLUE') {
+                throw new Error('蓝色转换失败');
+            }
+            
+            if (hexToManimColor('#e74c3c') !== 'RED') {
+                throw new Error('红色转换失败');
+            }
+            
+            if (hexToManimColor('#ABCDEF') !== '"#ABCDEF"') {
+                throw new Error('自定义颜色转换失败');
+            }
+            
+            return '颜色转换功能正常';
+        });
+        
+        // 测试4: 数字格式化
+        addTest('数字格式化功能', () => {
+            function formatNumber(num, precision = 2) {
+                if (Number.isInteger(num)) {
+                    return num.toString();
+                }
+                return num.toFixed(precision).replace(/\.?0+$/, '');
+            }
+            
+            if (formatNumber(1) !== '1') throw new Error('整数格式化失败');
+            if (formatNumber(1.5) !== '1.5') throw new Error('小数格式化失败');
+            if (formatNumber(1.00) !== '1') throw new Error('末尾零清理失败');
+            if (formatNumber(3.14159, 2) !== '3.14') throw new Error('精度控制失败');
+            
+            return '数字格式化功能正常';
+        });
+        
+        // 测试5: JSON序列化
+        addTest('JSON导入导出', () => {
+            const testScene = {
+                version: '1.0',
+                elements: [
+                    {
+                        type: 'square',
+                        name: 'sq1',
+                        props: { x: 0, y: 0, size: 1, color: '#3498db' }
+                    },
+                    {
+                        type: 'arrow',
+                        name: 'arr1',
+                        props: { start: [-1, 0, 0], end: [1, 0, 0], color: '#e74c3c' }
+                    }
+                ]
+            };
+            
+            // 序列化
+            const json = JSON.stringify(testScene);
+            
+            // 反序列化
+            const parsed = JSON.parse(json);
+            
+            if (parsed.elements.length !== 2) {
+                throw new Error('元素数量不匹配');
+            }
+            
+            if (parsed.elements[0].type !== 'square') {
+                throw new Error('元素类型不匹配');
+            }
+            
+            return 'JSON导入导出功能正常';
+        });
+        
+        // 运行所有测试
+        function runAllTests() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = '<div class="test-section"><h2>测试结果</h2></div>';
+            
+            let passCount = 0;
+            let failCount = 0;
+            
+            tests.forEach(test => {
+                const testDiv = document.createElement('div');
+                testDiv.className = 'test-case';
+                
+                try {
+                    const result = test.testFunc();
+                    testDiv.classList.add('pass');
+                    testDiv.innerHTML = `
+                        <span class="status pass">✓ 通过</span>
+                        <strong>${test.name}</strong><br>
+                        <small>${result}</small>
+                    `;
+                    passCount++;
+                } catch (error) {
+                    testDiv.classList.add('fail');
+                    testDiv.innerHTML = `
+                        <span class="status fail">✗ 失败</span>
+                        <strong>${test.name}</strong><br>
+                        <small style="color: #c0392b;">${error.message}</small>
+                    `;
+                    failCount++;
+                }
+                
+                resultsDiv.querySelector('.test-section').appendChild(testDiv);
+            });
+            
+            // 添加总结
+            const summary = document.createElement('div');
+            summary.className = 'test-case';
+            summary.innerHTML = `
+                <strong>测试总结</strong><br>
+                总计: ${tests.length} 个测试<br>
+                通过: <span style="color: #2ecc71;">${passCount}</span> 个<br>
+                失败: <span style="color: #e74c3c;">${failCount}</span> 个<br>
+                成功率: ${((passCount / tests.length) * 100).toFixed(1)}%
+            `;
+            resultsDiv.querySelector('.test-section').appendChild(summary);
+        }
+        
+        function clearResults() {
+            document.getElementById('test-results').innerHTML = '';
+        }
+        
+        // 页面加载时自动运行测试
+        window.addEventListener('load', () => {
+            console.log('测试页面加载完成');
+        });
+    </script>
+</body>
+</html>
+

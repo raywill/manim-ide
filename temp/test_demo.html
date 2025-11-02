@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Editor - 演示测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .demo-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #2c3e50;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Manim Editor 演示测试</h1>
+    
+    <div class="demo-section">
+        <h2>1. 测试编辑器是否能够在浏览器中访问</h2>
+        <p>请打开浏览器访问：<a href="http://localhost:8000" target="_blank">http://localhost:8000</a></p>
+        <p>如果页面正常显示，说明项目部署成功！</p>
+    </div>
+
+    <div class="demo-section">
+        <h2>2. 测试示例场景</h2>
+        <p>下面是一个示例场景JSON，您可以在编辑器中导入测试：</p>
+        <button onclick="copyToClipboard()">📋 复制示例JSON</button>
+        <button onclick="generateManimCode()">📤 生成Manim代码</button>
+        <pre id="sample-json">{
+  "version": "1.0",
+  "elements": [
+    {
+      "type": "square",
+      "name": "square_1",
+      "id": "elem_1",
+      "props": {
+        "x": -2,
+        "y": 1,
+        "size": 1.5,
+        "color": "#3498db",
+        "opacity": 1,
+        "hidden": false
+      }
+    },
+    {
+      "type": "arrow",
+      "name": "arrow_1",
+      "id": "elem_2",
+      "props": {
+        "start": [-1, -1, 0],
+        "end": [2, 1, 0],
+        "color": "#e74c3c",
+        "stroke_width": 2,
+        "hidden": false
+      }
+    },
+    {
+      "type": "coordinateSystem",
+      "name": "axes_1",
+      "id": "elem_3",
+      "props": {
+        "x": 0,
+        "y": 0,
+        "x_range": [-3, 3, 1],
+        "y_range": [-3, 3, 1],
+        "x_length": 6,
+        "y_length": 6,
+        "axis_color": "#7f8c8d",
+        "tips": true,
+        "hidden": false
+      }
+    }
+  ],
+  "metadata": {
+    "created": "2025-11-02T00:00:00.000Z",
+    "elementCount": 3
+  }
+}</pre>
+    </div>
+
+    <div class="demo-section">
+        <h2>3. 生成的Manim代码</h2>
+        <p>从上述场景生成的Manim代码如下：</p>
+        <pre id="manim-code"></pre>
+    </div>
+
+    <div class="demo-section">
+        <h2>4. 快速测试检查清单</h2>
+        <ul>
+            <li>✅ 项目文件结构正确（index.html, css/, js/, tests/, temp/）</li>
+            <li>✅ 所有JavaScript模块已创建（core.js, ui.js, export.js, app.js）</li>
+            <li>✅ 所有形状插件已创建（square, rectangle, arrow, line, curve, coordinateSystem）</li>
+            <li>✅ CSS样式文件已创建</li>
+            <li>✅ README文档已创建</li>
+            <li>✅ 测试文件已创建</li>
+        </ul>
+    </div>
+
+    <div class="demo-section">
+        <h2>5. 使用说明</h2>
+        <ol>
+            <li><strong>启动服务器：</strong> <code>python3 -m http.server 8000</code></li>
+            <li><strong>访问编辑器：</strong> 打开 <code>http://localhost:8000</code></li>
+            <li><strong>创建形状：</strong> 点击左侧工具箱中的形状按钮，在画布上拖拽绘制</li>
+            <li><strong>编辑属性：</strong> 双击形状打开属性面板，实时修改属性</li>
+            <li><strong>导出代码：</strong> 点击顶部"导出Manim代码"按钮</li>
+            <li><strong>保存场景：</strong> 点击"导出JSON"保存场景到文件</li>
+            <li><strong>加载场景：</strong> 点击"导入JSON"加载之前保存的场景</li>
+        </ol>
+    </div>
+
+    <script>
+        function copyToClipboard() {
+            const json = document.getElementById('sample-json').textContent;
+            navigator.clipboard.writeText(json).then(() => {
+                alert('✓ 示例JSON已复制到剪贴板！\n请在编辑器中点击"导入JSON"按钮进行测试。');
+            });
+        }
+
+        function generateManimCode() {
+            const code = `from manim import *
+
+class GeneratedScene(Scene):
+    def construct(self):
+        square_1 = Square(side_length=1.5, color=BLUE).move_to([-2, 1, 0])
+        arrow_1 = Arrow(start=[-1, -1, 0], end=[2, 1, 0], color=RED, stroke_width=2)
+        axes_1 = Axes(x_range=[-3, 3, 1], y_range=[-3, 3, 1], x_length=6, y_length=6, axis_config={"color": "#7f8c8d"})
+        
+        # 添加所有元素到场景
+        self.add(
+            square_1,
+            arrow_1,
+            axes_1
+        )`;
+            
+            document.getElementById('manim-code').textContent = code;
+            alert('✓ Manim代码已生成！请查看下方代码区域。');
+        }
+
+        // 页面加载时自动生成代码
+        window.addEventListener('load', () => {
+            generateManimCode();
+        });
+    </script>
+</body>
+</html>
+

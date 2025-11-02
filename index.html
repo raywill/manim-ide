@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Visual Editor</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 顶部工具栏 -->
+    <div id="toolbar">
+        <div class="toolbar-left">
+            <h1>Manim Visual Editor</h1>
+        </div>
+        <div class="toolbar-center">
+            <button id="undo-btn" title="撤销 (Ctrl+Z)">↶ 撤销</button>
+            <button id="redo-btn" title="重做 (Ctrl+Y)">↷ 重做</button>
+            <button id="delete-btn" title="删除 (Delete)">🗑️ 删除</button>
+        </div>
+        <div class="toolbar-right">
+            <button id="import-json-btn">📥 导入JSON</button>
+            <button id="export-json-btn">💾 导出JSON</button>
+            <button id="export-btn" class="primary">📤 导出Manim代码</button>
+        </div>
+    </div>
+
+    <!-- 主容器 -->
+    <div id="main-container">
+        <!-- 左侧工具箱 -->
+        <div id="toolbox">
+            <h3>形状工具</h3>
+            <div id="shape-tools">
+                <!-- 形状按钮将由JavaScript动态生成 -->
+            </div>
+            <div class="toolbox-section">
+                <h4>操作</h4>
+                <button id="select-mode-btn" class="tool-btn active">
+                    <span class="icon">👆</span>
+                    <span class="label">选择</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 画布容器 -->
+        <div id="canvas-container">
+            <canvas id="main-canvas"></canvas>
+            <!-- 辅助线 -->
+            <div id="guide-lines">
+                <div id="guide-vertical" class="guide-line"></div>
+                <div id="guide-horizontal" class="guide-line"></div>
+            </div>
+            <!-- 坐标显示 -->
+            <div id="coord-display"></div>
+        </div>
+
+        <!-- 右侧属性面板 -->
+        <div id="property-panel" class="hidden">
+            <div class="panel-header">
+                <h3>属性</h3>
+                <button id="close-panel-btn">✕</button>
+            </div>
+            <div id="property-content">
+                <!-- 属性字段将由JavaScript动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 导出代码模态框 -->
+    <div id="export-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>导出的Manim代码</h2>
+                <button id="close-modal-btn" class="close-btn">✕</button>
+            </div>
+            <div class="modal-body">
+                <pre id="export-code-display"></pre>
+            </div>
+            <div class="modal-footer">
+                <button id="copy-code-btn" class="primary">📋 复制代码</button>
+                <button id="download-code-btn">💾 下载为.py文件</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 隐藏的文件输入 -->
+    <input type="file" id="file-input" accept=".json" style="display: none;">
+
+    <!-- JavaScript模块 -->
+    <script src="js/core.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/export.js"></script>
+    
+    <!-- 形状插件 -->
+    <script src="js/plugins/square.js"></script>
+    <script src="js/plugins/rectangle.js"></script>
+    <script src="js/plugins/arrow.js"></script>
+    <script src="js/plugins/line.js"></script>
+    <script src="js/plugins/curve.js"></script>
+    <script src="js/plugins/coordinateSystem.js"></script>
+    
+    <!-- 主应用初始化 -->
+    <script src="js/app.js"></script>
+</body>
+</html>
+

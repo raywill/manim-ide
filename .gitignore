@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Manim输出
+media/
+*.mp4
+*.png
+*.gif
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 临时文件
+temp/*.py
+temp/*.json
+temp/*.html
+!temp/test_demo.html
+!temp/run_test.py
+
+# 日志
+*.log
+
+# 环境
+venv/
+env/
+ENV/
+
+# 其他
+node_modules/
+.cache/
+
