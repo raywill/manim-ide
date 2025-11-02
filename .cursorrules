@@ -1,0 +1,130 @@
+# Manim IDE 插件开发规则（精简版）
+
+## 插件自治原则 ⚠️ 最重要
+- **绝对禁止**在框架代码（core.js, ui.js, export.js）中硬编码形状类型
+- **所有**形状特定逻辑必须在插件内实现
+- 框架只负责调用插件接口，不关心具体实现
+
+## 开发流程
+
+### 规划阶段
+- 确定数学模型（圆的方程、贝塞尔公式等）
+- 确定绘制模式（drag/multiClick）
+- 确定属性结构
+
+### 实现阶段
+见后面的详细提示。
+
+### 测试阶段
+- 绘制测试
+- 选中测试（包括边缘和中心）
+- 移动测试（检查是否跳回0,0）⚠️
+- 缩放测试
+- 导出测试
+- 属性面板测试（step是否正确）
+
+### 文档阶段
+- README.md
+- 测试文件
+- 更新 index.html
+
+
+## 🚨 绝对不能犯的错误
+
+1. **缺少 getMoveAnchor** → 点击元素跳回(0,0)
+2. **使用 || 处理数字** → `x || 0` 当x=0时出错，必须用 `x !== undefined ? x : 0`
+3. **初始尺寸非0** → 拖动绘制时闪现，必须设为0
+4. **忘记 setRenderOpacity** → hidden属性无效
+5. **直接调用 toFixed()** → null值崩溃，必须用 formatNumber()
+6. **step硬编码** → 必须从 options.step 读取
+7. **缺少 onUpgrade** → 旧数据不兼容
+8. **handleScale用旧接口** → 必须用 {corner, fixedPoint, currentPoint}
+9. **renderDrawingPreview参数错误** → 签名是 (ctx, state, editor)，不是 (ctx, state, previewPoint, editor)
+10. **Arc用moveTo+closePath** → 画成扇形不是圆弧
+
+## 🔑 关键接口
+
+### 必需实现（4个）
+- `createDefault(x, y)` - 初始尺寸设0
+- `render(ctx, element, editor)` - 调用 setRenderOpacity，用 !== undefined
+- `hitTest(element, manimX, manimY, editor)` - 容差至少0.3单位
+- `toManim(element)` - 用 formatNumber，z_order=0不导出
+
+### 强烈推荐（1个）⚠️
+- `getMoveAnchor(element)` - **缺少会导致跳回bug**
+
+### multiClick模式（3个）
+- `onDrawClick(state, point, editor)`
+- `onDrawDoubleClick(state, editor)`
+- `renderDrawingPreview(ctx, state, editor)` - 参数签名：3个参数，从 editor.previewPoint 获取预览点
+
+### 数据兼容（1个）
+- `onUpgrade(props)` - 新增属性时必须实现
+
+## 📝 代码模板
+
+```javascript
+// 辅助函数放外部（避免this问题）
+function myHelper() { }
+
+registerShape({
+    type: 'myshape',
+    drawMode: 'drag',  // 或 'multiClick'
+    
+    createDefault: function(x, y) {
+        return {
+            props: {
+                x: x !== undefined ? x : 0,  // ⚠️ !== undefined
+                size: 0,  // ⚠️ 初始为0
+                z_order: 0,  // ⚠️ 必须
+                hidden: false
+            }
+        };
+    },
+    
+    render: function(ctx, element, editor) {
+        const size = props.size !== undefined ? props.size : 1;  // ⚠️
+        setRenderOpacity(ctx, element);  // ⚠️ 必须
+        // ...
+    },
+    
+    getMoveAnchor: function(element) {  // ⚠️ 必须
+        return { x: element.props.x, y: element.props.y };
+    },
+    
+    handleScale: function(element, scaleInfo, editor) {
+        const { corner, fixedPoint, currentPoint } = scaleInfo;  // ⚠️ 新接口
+        // ...
+    },
+    
+    toManim: function(element) {
+        const size = formatNumber(props.size);  // ⚠️ formatNumber
+        const zOrder = props.z_order || 0;
+        if (zOrder !== 0) { code += `.set_z_index(${zOrder})`; }  // ⚠️
+    },
+    
+    onUpgrade: function(props) {  // ⚠️ 新增属性时必须
+        const upgraded = { ...props };
+        if (upgraded.z_order === undefined) upgraded.z_order = 0;
+        return upgraded;
+    },
+    
+    properties: [
+        { key: 'size', step: 0.01 },  // ⚠️ 设置正确的step
+        { key: 'z_order', step: 1 }   // ⚠️ 必须
+    ]
+});
+```
+
+## 🎯 Arc特殊注意
+
+- **只画圆弧**：ctx.arc() + stroke，不用 moveTo/closePath/fill
+- **方向自动**：三点决定，isClockwise = spanAB < spanAC
+- **Canvas参数**：anticlockwise = !isClockwise（Y轴反转）
+- **方角边缘**：lineCap = 'butt'
+- **外部函数**：计算函数放registerShape外部
+
+---
+
+遵循这些规则可避免90%的常见错误！
+
