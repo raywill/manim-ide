@@ -185,9 +185,12 @@ node js/plugins/ellipse/ellipse.test.js
 ### 开发文档
 - [docs/PLUGIN_SYSTEM_DESIGN.md](docs/PLUGIN_SYSTEM_DESIGN.md) - 插件系统设计
 - [docs/PLUGIN_API_REFERENCE.md](docs/PLUGIN_API_REFERENCE.md) - 完整API参考
-- [docs/PLUGIN_INTERFACE_v2.1.md](docs/PLUGIN_INTERFACE_v2.1.md) - v2.1接口规范
+- [docs/PLUGIN_INTERFACE_v2.2.md](docs/PLUGIN_INTERFACE_v2.2.md) - v2.2接口规范
 - [docs/PLUGIN_TUTORIAL.md](docs/PLUGIN_TUTORIAL.md) - 插件开发教程
+- [docs/CURSOR_PLUGIN_RULES.md](docs/CURSOR_PLUGIN_RULES.md) - ⭐ 插件开发规则（避坑指南）
+- [docs/UPGRADE_GUIDE.md](docs/UPGRADE_GUIDE.md) - 数据升级指南
 - [docs/MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md) - 迁移指南
+- [docs/PERFORMANCE_OPTIMIZATION.md](docs/PERFORMANCE_OPTIMIZATION.md) - 性能优化
 
 ---
 

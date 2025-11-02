@@ -115,7 +115,7 @@ registerShape({
         
         ctx.strokeStyle = props.stroke_color || '#e74c3c';
         ctx.lineWidth = props.stroke_width !== undefined ? props.stroke_width : 30;
-        ctx.lineCap = 'round';
+        ctx.lineCap = 'butt';  // 方角边缘
         ctx.stroke();
         
         // 绘制圆心标记
@@ -237,8 +237,8 @@ registerShape({
                 
                 ctx.globalAlpha = 0.6;
                 ctx.strokeStyle = '#e74c3c';
-                ctx.lineWidth = 10;
-                ctx.lineCap = 'round';
+                ctx.lineWidth = 30;
+                ctx.lineCap = 'butt';  // 方角边缘
                 
                 ctx.beginPath();
                 ctx.arc(centerCanvas.x, centerCanvas.y, radiusPixels, startRad, endRad, anticlockwise);
