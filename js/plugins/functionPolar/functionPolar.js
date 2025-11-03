@@ -285,6 +285,7 @@ registerShape({
         let pythonExpr = expression
             .replace(/\^/g, '**')  // 幂运算
             .replace(/Math\./g, '')  // 移除 Math. 前缀
+            .replace(/\bpi\b/g, 'PI')  // pi 常量 → PI (Manim)
             .replace(/exp/g, 'np.exp')
             .replace(/sin/g, 'np.sin')
             .replace(/cos/g, 'np.cos')

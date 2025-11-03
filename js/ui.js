@@ -132,11 +132,11 @@ function initCanvasEvents() {
                 const pointId = cps && cps[dragOffset.index] ? cps[dragOffset.index].id : dragOffset.index;
                 const newProps = plugin.updateControlPoint(dragElement, pointId, manimCoord.x, manimCoord.y, ManimEditor);
                 if (newProps && typeof newProps === 'object') {
-                    updateElement(dragElement.id, newProps);
+                    updateElement(dragElement.id, newProps, true);  // 拖动中跳过历史
                 }
             } else if (dragOffset.type === 'scaleHandle') {
                 // 拖动缩放手柄
-                handleScaleDrag(dragElement, dragOffset, manimCoord);
+                handleScaleDrag(dragElement, dragOffset, manimCoord, true);  // 传入 skipHistory=true
             } else if (dragOffset.type === 'move') {
                 // 移动元素 - 调用插件方法
                 const plugin = ManimEditor.shapeRegistry[dragElement.type];
@@ -159,7 +159,7 @@ function initCanvasEvents() {
                     }
                     
                     const newProps = plugin.handleMove(dragElement, moveInfo, ManimEditor);
-                    updateElement(dragElement.id, newProps);
+                    updateElement(dragElement.id, newProps, true);  // 拖动中跳过历史
                     
                     // 更新lastX/lastY
                     if (dragOffset.lastX !== undefined) {
@@ -171,7 +171,7 @@ function initCanvasEvents() {
                     updateElement(dragElement.id, {
                         x: manimCoord.x - dragOffset.x,
                         y: manimCoord.y - dragOffset.y
-                    });
+                    }, true);  // 拖动中跳过历史
                 }
             }
             
@@ -350,7 +350,10 @@ function initCanvasEvents() {
             window.debugScale.log('mouseup', {});
         }
         
-        if (dragElement) {
+        if (dragElement && isDragging) {
+            // 拖动结束，保存历史记录（只保存最终状态）
+            saveToHistory();
+            
             dragElement = null;
             dragOffset = { x: 0, y: 0 };
             isDragging = false;
@@ -502,8 +505,9 @@ function getElementBounds(element) {
 
 /**
  * 处理缩放拖拽 - 调用插件方法（插件化v2.0）
+ * @param {boolean} skipHistory - 是否跳过历史记录（拖动中使用）
  */
-function handleScaleDrag(element, dragOffset, currentCoord) {
+function handleScaleDrag(element, dragOffset, currentCoord, skipHistory = false) {
     const plugin = ManimEditor.shapeRegistry[element.type];
     
     if (!plugin) {
@@ -534,7 +538,7 @@ function handleScaleDrag(element, dragOffset, currentCoord) {
     // 调用插件的缩放处理
     if (plugin.handleScale) {
         const newProps = plugin.handleScale(element, scaleInfo, ManimEditor);
-        updateElement(element.id, newProps);
+        updateElement(element.id, newProps, skipHistory);  // 传递 skipHistory
     } else {
         console.warn(`插件 ${element.type} 未实现 handleScale 方法`);
     }

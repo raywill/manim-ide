@@ -209,10 +209,10 @@ registerShape({
             ).join(', ');
             
             let code = `${varName} = VMobject(color=${color})`;
-            code += `\n        ${varName}.set_points_smoothly([${pointsStr}])`;
+            code += `\n${varName}.set_points_smoothly([${pointsStr}])`;
             
             if (props.stroke_width && props.stroke_width !== 2) {
-                code += `\n        ${varName}.set_stroke(width=${formatNumber(props.stroke_width)})`;
+                code += `\n${varName}.set_stroke(width=${formatNumber(props.stroke_width)})`;
             }
             
             // 设置 z-index

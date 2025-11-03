@@ -501,8 +501,11 @@ function deleteElement(elementId) {
 
 /**
  * 更新元素属性
+ * @param {string} elementId - 元素ID
+ * @param {object} newProps - 新属性
+ * @param {boolean} skipHistory - 是否跳过历史记录（拖动中使用）
  */
-function updateElement(elementId, newProps) {
+function updateElement(elementId, newProps, skipHistory = false) {
     const element = ManimEditor.elements.find(e => e.id === elementId);
     if (element) {
         const oldZOrder = element.props.z_order;
@@ -514,7 +517,10 @@ function updateElement(elementId, newProps) {
             updateElementsOrder();
         }
         
-        saveToHistory();
+        // 只在非拖动状态或拖动结束时保存历史
+        if (!skipHistory) {
+            saveToHistory();
+        }
         render();
         return true;
     }
