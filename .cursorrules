@@ -49,7 +49,7 @@ js/plugins/
 8. **handleScale用旧接口** → 必须用 {corner, fixedPoint, currentPoint}
 9. **renderDrawingPreview参数错误** → 签名是 (ctx, state, editor)，不是 (ctx, state, previewPoint, editor)
 10. **Arc用moveTo+closePath** → 画成扇形不是圆弧
-11. 默认值，如颜色、线宽、透明度等，必须在对象中集中管理，不要在函数中硬编码，用 SECTOR_DEFAULTS, PREVIEW_STYLES 两个对象来集中管理。
+11. 默认值，如颜色、线宽、透明度等，必须在对象中集中管理，不要在函数中硬编码，必须用 DEFAULT_SETTINGS, PREVIEW_STYLES 两个对象来集中管理。
 
 ## 🔑 关键接口
 
