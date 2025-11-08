@@ -6,12 +6,332 @@
 /**
  * 初始化UI
  */
+let multiSelectionIndicator = null;
+
 function initUI() {
     initToolbox();
     initPropertyPanel();
     initCanvasEvents();
     initKeyboardShortcuts();
     initToolbarButtons();
+    initSelectionIndicator();
+}
+
+/**
+ * 初始化多选状态提示
+ */
+function initSelectionIndicator() {
+    const container = document.getElementById('canvas-container');
+    if (!container) return;
+    
+    multiSelectionIndicator = document.createElement('div');
+    multiSelectionIndicator.id = 'multi-selection-indicator';
+    multiSelectionIndicator.className = 'selection-indicator hidden';
+    multiSelectionIndicator.innerHTML = `
+        <span class="selection-count"></span>
+        <span class="selection-tip">（属性面板已隐藏）</span>
+    `;
+    container.appendChild(multiSelectionIndicator);
+}
+
+/**
+ * 获取当前选中数量
+ */
+function getSelectionCount() {
+    return ManimEditor.selectedElementIds?.length || 0;
+}
+
+/**
+ * 获取当前主选中的元素（仅当选中数量为1时返回元素）
+ */
+function getPrimarySelectedElement() {
+    if (getSelectionCount() !== 1) return null;
+    const id = ManimEditor.selectedElementIds[0];
+    return ManimEditor.getElementById(id);
+}
+
+/**
+ * 根据ID集合更新选中状态
+ */
+function setSelectionByIds(ids, options = {}) {
+    const { skipRender = false } = options;
+    ManimEditor.setSelectionIds(ids);
+    refreshSelectionUI();
+    if (!skipRender) {
+        render();
+    }
+}
+
+/**
+ * 单独选中一个元素
+ */
+function selectSingleElement(element, options = {}) {
+    if (!element) {
+        clearSelection(options);
+        return;
+    }
+    setSelectionByIds([element.id], options);
+}
+
+/**
+ * 向选中集合添加元素
+ */
+function addElementToSelection(element, options = {}) {
+    if (!element) return;
+    if (!ManimEditor.isElementSelected(element.id)) {
+        ManimEditor.addToSelection(element.id);
+    }
+    refreshSelectionUI();
+    if (!options.skipRender) {
+        render();
+    }
+}
+
+/**
+ * 切换元素的选中状态
+ */
+function toggleElementSelection(element, options = {}) {
+    if (!element) return;
+    if (ManimEditor.isElementSelected(element.id)) {
+        ManimEditor.removeFromSelection(element.id);
+    } else {
+        ManimEditor.addToSelection(element.id);
+    }
+    refreshSelectionUI();
+    if (!options.skipRender) {
+        render();
+    }
+}
+
+/**
+ * 清空选中状态
+ */
+function clearSelection(options = {}) {
+    const { skipRender = false } = options;
+    const hadSelection = getSelectionCount() > 0;
+    ManimEditor.clearSelection();
+    refreshSelectionUI({ clearPanel: hadSelection });
+    if (!skipRender) {
+        render();
+    }
+}
+
+/**
+ * 更新属性面板与多选提示
+ */
+function refreshSelectionUI(options = {}) {
+    const { clearPanel = false } = options;
+    const count = getSelectionCount();
+    
+    if (count === 1) {
+        const element = getPrimarySelectedElement();
+        if (element) {
+            showPropertyPanel(element);
+        }
+        hideMultiSelectionIndicator();
+    } else if (count > 1) {
+        hidePropertyPanel({ preserveSelection: true });
+        showMultiSelectionIndicator(count);
+    } else {
+        hideMultiSelectionIndicator();
+        hidePropertyPanel({ preserveSelection: true });
+    }
+}
+
+/**
+ * 显示多选提示
+ */
+function showMultiSelectionIndicator(count) {
+    if (!multiSelectionIndicator) return;
+    const countSpan = multiSelectionIndicator.querySelector('.selection-count');
+    if (countSpan) {
+        countSpan.textContent = `已选中 ${count} 个对象`;
+    }
+    multiSelectionIndicator.classList.remove('hidden');
+}
+
+/**
+ * 隐藏多选提示
+ */
+function hideMultiSelectionIndicator() {
+    if (!multiSelectionIndicator) return;
+    multiSelectionIndicator.classList.add('hidden');
+}
+
+/**
+ * 对单个元素应用平移增量（单位：Manim坐标）
+ */
+function applyMoveDeltaToElement(element, deltaX, deltaY, options = {}) {
+    if (!element || (deltaX === 0 && deltaY === 0)) return;
+    const { skipHistory = true } = options;
+    const plugin = ManimEditor.shapeRegistry[element.type];
+    let newProps = null;
+    
+    if (plugin && plugin.handleMove) {
+        let anchor = undefined;
+        if (plugin.getMoveAnchor) {
+            anchor = plugin.getMoveAnchor(element);
+        }
+        
+        if (anchor === null) {
+            // 使用增量移动
+            newProps = plugin.handleMove(element, {
+                deltaX,
+                deltaY,
+                currentPoint: { x: 0, y: 0 },
+                offset: { x: 0, y: 0 }
+            }, ManimEditor);
+        } else {
+            const baseAnchor = anchor || { 
+                x: element.props.x !== undefined ? element.props.x : 0,
+                y: element.props.y !== undefined ? element.props.y : 0
+            };
+            const currentPoint = {
+                x: baseAnchor.x + deltaX,
+                y: baseAnchor.y + deltaY
+            };
+            newProps = plugin.handleMove(element, {
+                currentPoint,
+                offset: { x: 0, y: 0 },
+                deltaX,
+                deltaY
+            }, ManimEditor);
+        }
+    }
+    
+    if (!newProps || typeof newProps !== 'object') {
+        const fallback = {};
+        if (element.props.x !== undefined) fallback.x = element.props.x + deltaX;
+        if (element.props.y !== undefined) fallback.y = element.props.y + deltaY;
+        newProps = fallback;
+    }
+    
+    if (newProps && Object.keys(newProps).length > 0) {
+        updateElement(element.id, newProps, skipHistory);
+    }
+}
+
+/**
+ * 对选中集合应用平移增量（单位：Manim坐标）
+ */
+function applyMoveDeltaToSelection(deltaX, deltaY, options = {}) {
+    if (deltaX === 0 && deltaY === 0) return;
+    const elements = ManimEditor.getSelectedElements();
+    elements.forEach(element => applyMoveDeltaToElement(element, deltaX, deltaY, options));
+}
+
+/**
+ * 归一化矩形（确保宽高为正值）
+ */
+function normalizeRect(x1, y1, x2, y2) {
+    const minX = Math.min(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxX = Math.max(x1, x2);
+    const maxY = Math.max(y1, y2);
+    return {
+        x: minX,
+        y: minY,
+        w: maxX - minX,
+        h: maxY - minY
+    };
+}
+
+/**
+ * 判断两个矩形是否相交
+ */
+function rectsIntersect(a, b) {
+    if (!a || !b) return false;
+    return (
+        a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y
+    );
+}
+
+/**
+ * 收集落入指定画布矩形内的元素ID
+ */
+function collectElementsInRect(rect) {
+    if (!rect || rect.w === 0 || rect.h === 0) return [];
+    const tolerancePx = (ManimEditor.pxPerUnit || 70) * 0.3;
+    const expanded = {
+        x: rect.x - tolerancePx,
+        y: rect.y - tolerancePx,
+        w: rect.w + tolerancePx * 2,
+        h: rect.h + tolerancePx * 2
+    };
+    
+    return ManimEditor.elements
+        .filter(element => {
+            const plugin = ManimEditor.shapeRegistry[element.type];
+            if (!plugin || !plugin.getBounds) return false;
+            const bounds = plugin.getBounds(element, ManimEditor);
+            if (!bounds) return false;
+            return rectsIntersect(bounds, expanded);
+        })
+        .map(element => element.id);
+}
+
+/**
+ * 生成复制元素的唯一名称
+ */
+function generateCopyName(originalName, existingNames) {
+    const names = existingNames || new Set();
+    let base = originalName || 'element';
+    if (!base.endsWith('_copy')) {
+        base = `${base}_copy`;
+    }
+    let candidate = base;
+    let counter = 2;
+    while (names.has(candidate)) {
+        candidate = `${base}_${counter++}`;
+    }
+    names.add(candidate);
+    return candidate;
+}
+
+/**
+ * 复制当前选中元素到剪贴板
+ */
+function copySelectionToClipboard() {
+    const elements = ManimEditor.getSelectedElements();
+    if (!elements || elements.length === 0) return;
+    ManimEditor.clipboard = elements.map(element => JSON.parse(JSON.stringify(element)));
+    console.log(`[Clipboard] 已复制 ${elements.length} 个元素`);
+}
+
+/**
+ * 从剪贴板粘贴，并偏移指定像素
+ */
+function pasteFromClipboard() {
+    const clipboard = ManimEditor.clipboard;
+    if (!clipboard || clipboard.length === 0) return;
+    
+    const pxPerUnit = ManimEditor.pxPerUnit || 70;
+    const offsetUnits = 50 / pxPerUnit;
+    const offsetX = offsetUnits;
+    const offsetY = -offsetUnits; // 画布向下为正，Manim坐标向上为正
+    
+    const existingNames = new Set(ManimEditor.elements.map(el => el.name));
+    const newElements = [];
+    
+    clipboard.forEach(template => {
+        const clone = JSON.parse(JSON.stringify(template));
+        clone.id = ManimEditor.generateId();
+        clone.name = generateCopyName(clone.name || clone.type, existingNames);
+        existingNames.add(clone.name);
+        ManimEditor.elements.push(clone);
+        newElements.push(clone);
+    });
+    
+    updateElementsOrder();
+    newElements.forEach(element => applyMoveDeltaToElement(element, offsetX, offsetY, { skipHistory: true }));
+    saveToHistory();
+    
+    const newIds = newElements.map(element => element.id);
+    setSelectionByIds(newIds, { skipRender: true });
+    render();
 }
 
 /**
@@ -88,102 +408,107 @@ function initCanvasEvents() {
     
     let dragElement = null;
     let dragOffset = { x: 0, y: 0 };
+    let dragMode = null;
+    let dragSelection = null;
     let isDragging = false;
-    let isShiftPressed = false;
+    let dragChanged = false;
+    let isMarqueeSelecting = false;
+    let marqueeStart = null;
+    let marqueeAdditive = false;
     
-    // 鼠标移动 - 显示坐标
     canvas.addEventListener('mousemove', (e) => {
         const rect = canvas.getBoundingClientRect();
         const canvasX = e.clientX - rect.left;
         const canvasY = e.clientY - rect.top;
         const manimCoord = ManimEditor.canvasToManim(canvasX, canvasY);
         
-        // 坐标显示 + 模式提示
         let displayText = `Manim: (${manimCoord.x.toFixed(2)}, ${manimCoord.y.toFixed(2)})`;
-        
-        // 如果在绘制模式，显示提示
         if (ManimEditor.mode === 'draw') {
             const shapeName = ManimEditor.shapeRegistry[ManimEditor.currentShapeType]?.name || '图形';
             if (ManimEditor.drawingState) {
-                // 点击式绘制中
                 displayText += ` | 正在绘制${shapeName}（双击完成，ESC取消）`;
             } else {
-                // 准备绘制
                 displayText += ` | ${shapeName}绘制模式（ESC退出）`;
             }
-        } else if (ManimEditor.selectedElement) {
-            // 选中元素时
-            displayText += ` | 按ESC取消选择`;
+        } else if (getSelectionCount() > 0) {
+            displayText += ' | 按ESC取消选择';
         }
         
         coordDisplay.textContent = displayText;
         coordDisplay.classList.add('visible');
         
-        // 拖拽元素或控制点
-        if (dragElement && isDragging) {
-            if (dragOffset.type === 'curvePoint') {
-                // 拖动控制点（严格插件化）
+        if (isDragging) {
+            if (dragMode === 'control-point' && dragElement) {
                 const plugin = ManimEditor.shapeRegistry[dragElement.type];
                 if (!plugin || !plugin.updateControlPoint) {
                     console.error(`插件 ${dragElement.type} 未实现 updateControlPoint()`);
-                    return;
+                } else {
+                    const cps = plugin.getControlPoints ? plugin.getControlPoints(dragElement, ManimEditor) : [];
+                    const pointId = cps && cps[dragOffset.index] ? cps[dragOffset.index].id : dragOffset.index;
+                    const newProps = plugin.updateControlPoint(dragElement, pointId, manimCoord.x, manimCoord.y, ManimEditor);
+                    if (newProps && typeof newProps === 'object') {
+                        updateElement(dragElement.id, newProps, true);
+                        dragChanged = true;
+                    }
                 }
-                const cps = plugin.getControlPoints ? plugin.getControlPoints(dragElement, ManimEditor) : [];
-                const pointId = cps && cps[dragOffset.index] ? cps[dragOffset.index].id : dragOffset.index;
-                const newProps = plugin.updateControlPoint(dragElement, pointId, manimCoord.x, manimCoord.y, ManimEditor);
-                if (newProps && typeof newProps === 'object') {
-                    updateElement(dragElement.id, newProps, true);  // 拖动中跳过历史
-                }
-            } else if (dragOffset.type === 'scaleHandle') {
-                // 拖动缩放手柄
-                handleScaleDrag(dragElement, dragOffset, manimCoord, true);  // 传入 skipHistory=true
-            } else if (dragOffset.type === 'move') {
-                // 移动元素 - 调用插件方法
+            } else if (dragMode === 'scale-handle' && dragElement) {
+                handleScaleDrag(dragElement, dragOffset, manimCoord, true);
+                dragChanged = true;
+            } else if (dragMode === 'move-single' && dragElement) {
                 const plugin = ManimEditor.shapeRegistry[dragElement.type];
-                
                 if (plugin && plugin.handleMove) {
-                    // 准备移动信息
-                    // 对于有lastX/lastY的（arrow/line/curve），使用增量方式
-                    // 对于普通的，使用offset方式
                     const moveInfo = {
                         currentPoint: manimCoord,
                         offset: { x: dragOffset.x, y: dragOffset.y }
                     };
-                    
-                    // 计算增量（for arrow/line/curve）
                     if (dragOffset.lastX !== undefined) {
                         const dx = manimCoord.x - dragOffset.x;
                         const dy = manimCoord.y - dragOffset.y;
                         moveInfo.deltaX = dx - dragOffset.lastX;
                         moveInfo.deltaY = dy - dragOffset.lastY;
                     }
-                    
                     const newProps = plugin.handleMove(dragElement, moveInfo, ManimEditor);
-                    updateElement(dragElement.id, newProps, true);  // 拖动中跳过历史
-                    
-                    // 更新lastX/lastY
+                    updateElement(dragElement.id, newProps, true);
                     if (dragOffset.lastX !== undefined) {
                         dragOffset.lastX = manimCoord.x - dragOffset.x;
                         dragOffset.lastY = manimCoord.y - dragOffset.y;
                     }
                 } else {
-                    // 默认：移动中心点
                     updateElement(dragElement.id, {
                         x: manimCoord.x - dragOffset.x,
                         y: manimCoord.y - dragOffset.y
-                    }, true);  // 拖动中跳过历史
+                    }, true);
                 }
-            }
-            
-            // 更新属性面板
-            if (ManimEditor.selectedElement?.id === dragElement.id) {
-                updatePropertyPanel(dragElement);
+                dragChanged = true;
+                if (getSelectionCount() === 1) {
+                    updatePropertyPanel(dragElement);
+                }
+            } else if (dragMode === 'move-multi' && dragSelection) {
+                const deltaX = manimCoord.x - dragSelection.lastPoint.x;
+                const deltaY = manimCoord.y - dragSelection.lastPoint.y;
+                if (Math.abs(deltaX) > 0 || Math.abs(deltaY) > 0) {
+                    applyMoveDeltaToSelection(deltaX, deltaY, { skipHistory: true });
+                    dragSelection.lastPoint = manimCoord;
+                    dragSelection.hasMoved = true;
+                    dragChanged = true;
+                }
             }
         }
         
-        // 绘制模式下的临时预览
+        if (isMarqueeSelecting && marqueeStart) {
+            const rectInfo = normalizeRect(marqueeStart.x, marqueeStart.y, canvasX, canvasY);
+            ManimEditor.marqueeRect = rectInfo;
+            ManimEditor.marqueePreviewIds = collectElementsInRect(rectInfo);
+            render();
+        }
+        
         if (ManimEditor.isDrawing && ManimEditor.tempElement) {
             updateTempElement(canvasX, canvasY);
+        }
+        
+        if (ManimEditor.drawingState && ManimEditor.drawingState.points) {
+            ManimEditor.previewPoint = [manimCoord.x, manimCoord.y, 0];
+            render();
         }
     });
     
@@ -191,74 +516,71 @@ function initCanvasEvents() {
         coordDisplay.classList.remove('visible');
     });
     
-    // 鼠标按下
     canvas.addEventListener('mousedown', (e) => {
         const rect = canvas.getBoundingClientRect();
         const canvasX = e.clientX - rect.left;
         const canvasY = e.clientY - rect.top;
         const manimCoord = ManimEditor.canvasToManim(canvasX, canvasY);
         
-        // 检查是否点击了元素
         const clickedElement = findElementAtPoint(canvasX, canvasY);
+        const selectionCount = getSelectionCount();
+        const primaryElement = getPrimarySelectedElement();
+        const isMetaKey = e.metaKey || e.ctrlKey;
+        const isShiftKey = e.shiftKey;
+        const additive = isMetaKey || isShiftKey;
         
-        // ═══════════════════════════════════════════
-        // 优先级1：如果有选中的元素，检查它的控制点
-        // ═══════════════════════════════════════════
-        if (ManimEditor.selectedElement) {
-            const controlPoint = findControlPoint(canvasX, canvasY, ManimEditor.selectedElement);
-            
+        dragElement = null;
+        dragMode = null;
+        dragSelection = null;
+        dragChanged = false;
+        
+        if (!additive && selectionCount === 1 && primaryElement) {
+            const controlPoint = findControlPoint(canvasX, canvasY, primaryElement);
             if (controlPoint) {
-                // 点击了选中元素的控制点，准备调整
-                const element = ManimEditor.selectedElement;
-                dragElement = element;
+                dragElement = primaryElement;
                 isDragging = true;
-                
+                dragMode = controlPoint.type === 'curvePoint' ? 'control-point' : 'scale-handle';
                 if (controlPoint.type === 'curvePoint') {
                     dragOffset = {
                         type: 'curvePoint',
                         index: controlPoint.index,
                         startX: manimCoord.x,
                         startY: manimCoord.y,
-                        originalProps: JSON.parse(JSON.stringify(element.props))
+                        originalProps: JSON.parse(JSON.stringify(primaryElement.props))
                     };
-                } else if (controlPoint.type === 'scaleHandle') {
-                    // 缩放手柄
-                    const originalProps = JSON.parse(JSON.stringify(element.props));
-                    
-                    // 关键修复：在mousedown时就计算并缓存fixedPoint
-                    const fixedPoint = calculateFixedPoint(element, controlPoint.corner, originalProps);
-                    
+                } else {
+                    const originalProps = JSON.parse(JSON.stringify(primaryElement.props));
+                    const fixedPoint = calculateFixedPoint(primaryElement, controlPoint.corner, originalProps);
                     dragOffset = {
                         type: 'scaleHandle',
                         corner: controlPoint.corner,
                         startX: manimCoord.x,
                         startY: manimCoord.y,
-                        originalProps: originalProps,
-                        fixedPoint: fixedPoint  // 在mousedown时就缓存！
+                        originalProps,
+                        fixedPoint
                     };
-                    console.log(`准备缩放: corner=${controlPoint.corner}, fixedPoint=`, fixedPoint);
-                    
-                    // 调试日志
                     if (window.debugScale) {
                         window.debugScale.log('mousedown', { fixedPoint, corner: controlPoint.corner });
                     }
                 }
-                
                 render();
                 return;
             }
-            
-            // 如果点击了选中的元素本身（不是控制点），准备移动
-            if (clickedElement && clickedElement.id === ManimEditor.selectedElement.id) {
+        }
+        
+        if (ManimEditor.mode === 'draw') {
+            if (clickedElement) {
+                selectSingleElement(clickedElement);
+                setSelectMode();
+                document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+                
                 dragElement = clickedElement;
                 isDragging = true;
+                dragMode = 'move-single';
                 
-                // 插件化：调用插件方法获取移动锚点
                 const plugin = ManimEditor.shapeRegistry[clickedElement.type];
                 const anchor = plugin && plugin.getMoveAnchor ? plugin.getMoveAnchor(clickedElement) : null;
-                
                 if (anchor === null) {
-                    // null表示使用增量移动（arrow/line/curve）
                     dragOffset = {
                         type: 'move',
                         x: manimCoord.x,
@@ -267,138 +589,152 @@ function initCanvasEvents() {
                         lastY: 0
                     };
                 } else {
-                    // 使用锚点移动（rectangle/square/circle/parabola等）
                     dragOffset = {
                         type: 'move',
                         x: manimCoord.x - anchor.x,
                         y: manimCoord.y - anchor.y
                     };
                 }
-                
                 render();
                 return;
             }
-        }
-        
-        // ═══════════════════════════════════════════
-        // 优先级2：如果在绘制模式，优先绘制（即使点击在其他元素上）
-        // ═══════════════════════════════════════════
-        if (ManimEditor.mode === 'draw') {
-            // 根据插件的drawMode决定绘制方式
+            
+            if (!clickedElement && selectionCount > 0) {
+                clearSelection();
+                render();
+                return;
+            }
+            
             const plugin = ManimEditor.shapeRegistry[ManimEditor.currentShapeType];
             const drawMode = plugin?.drawMode || 'drag';
-            
-            console.log(`[mousedown绘制] type=${ManimEditor.currentShapeType}, drawMode=${drawMode}`);
-            
             if (drawMode === 'multiClick' || drawMode === 'click') {
-                // 点击式绘制（通用）
                 handleClickDrawing(canvasX, canvasY);
             } else {
-                // 拖动式绘制
                 startDrawing(canvasX, canvasY);
             }
             return;
         }
         
-        // ═══════════════════════════════════════════
-        // 优先级3：选择模式下，选中点击的元素
-        // ═══════════════════════════════════════════
         if (clickedElement) {
-            // 选中新元素
-            ManimEditor.selectedElement = clickedElement;
-            showPropertyPanel(clickedElement);
+            if (isMetaKey) {
+                toggleElementSelection(clickedElement);
+                return;
+            }
             
-            // 准备拖拽
-            dragElement = clickedElement;
-            isDragging = true;
+            if (isShiftKey && !ManimEditor.isElementSelected(clickedElement.id)) {
+                addElementToSelection(clickedElement);
+                return;
+            }
             
-            // 插件化：调用插件方法获取移动锚点
-            const plugin = ManimEditor.shapeRegistry[clickedElement.type];
-            const anchor = plugin && plugin.getMoveAnchor ? plugin.getMoveAnchor(clickedElement) : null;
+            if (!ManimEditor.isElementSelected(clickedElement.id)) {
+                selectSingleElement(clickedElement);
+            }
             
-            if (anchor === null) {
-                // null表示使用增量移动
-                dragOffset = {
-                    type: 'move',
-                    x: manimCoord.x,
-                    y: manimCoord.y,
-                    lastX: 0,
-                    lastY: 0
+            if (getSelectionCount() > 1) {
+                isDragging = true;
+                dragMode = 'move-multi';
+                dragSelection = {
+                    ids: [...ManimEditor.selectedElementIds],
+                    lastPoint: manimCoord,
+                    hasMoved: false
                 };
             } else {
-                // 使用锚点移动
-                dragOffset = {
-                    type: 'move',
-                    x: manimCoord.x - anchor.x,
-                    y: manimCoord.y - anchor.y
-                };
+                dragElement = getPrimarySelectedElement() || clickedElement;
+                isDragging = true;
+                dragMode = 'move-single';
+                
+                const plugin = ManimEditor.shapeRegistry[dragElement.type];
+                const anchor = plugin && plugin.getMoveAnchor ? plugin.getMoveAnchor(dragElement) : null;
+                if (anchor === null) {
+                    dragOffset = {
+                        type: 'move',
+                        x: manimCoord.x,
+                        y: manimCoord.y,
+                        lastX: 0,
+                        lastY: 0
+                    };
+                } else {
+                    dragOffset = {
+                        type: 'move',
+                        x: manimCoord.x - anchor.x,
+                        y: manimCoord.y - anchor.y
+                    };
+                }
             }
             
             render();
-        } else {
-            // 点击空白处，取消选择
-            ManimEditor.selectedElement = null;
-            hidePropertyPanel();
-            render();
+            return;
         }
+        
+        if (!additive && selectionCount > 0) {
+            clearSelection();
+        }
+        
+        isMarqueeSelecting = true;
+        marqueeStart = { x: canvasX, y: canvasY };
+        marqueeAdditive = additive;
+        ManimEditor.marqueeRect = null;
+        ManimEditor.marqueePreviewIds = [];
     });
     
-    // 鼠标释放
     canvas.addEventListener('mouseup', (e) => {
-        // 调试日志
-        if (window.debugScale && dragOffset && dragOffset.type === 'scaleHandle') {
+        if (window.debugScale && dragMode === 'scale-handle') {
             window.debugScale.log('mouseup', {});
         }
         
-        if (dragElement && isDragging) {
-            // 拖动结束，保存历史记录（只保存最终状态）
+        if (isDragging && dragChanged) {
             saveToHistory();
+        }
+        
+        dragElement = null;
+        dragMode = null;
+        dragSelection = null;
+        dragOffset = { x: 0, y: 0 };
+        isDragging = false;
+        dragChanged = false;
+        
+        if (isMarqueeSelecting) {
+            const rectInfo = ManimEditor.marqueeRect;
+            const hasArea = rectInfo && (rectInfo.w >= 6 || rectInfo.h >= 6);
+            let ids = hasArea ? collectElementsInRect(rectInfo) : [];
             
-            dragElement = null;
-            dragOffset = { x: 0, y: 0 };
-            isDragging = false;
+            if (marqueeAdditive) {
+                const combined = new Set(ManimEditor.selectedElementIds);
+                ids.forEach(id => combined.add(id));
+                setSelectionByIds(Array.from(combined), { skipRender: true });
+            } else {
+                setSelectionByIds(ids, { skipRender: true });
+            }
+            
+            isMarqueeSelecting = false;
+            marqueeStart = null;
+            marqueeAdditive = false;
+            ManimEditor.marqueeRect = null;
+            ManimEditor.marqueePreviewIds = [];
+            render();
         }
         
         if (ManimEditor.isDrawing) {
-            const rect = canvas.getBoundingClientRect();
-            const canvasX = e.clientX - rect.left;
-            const canvasY = e.clientY - rect.top;
+            const rectBound = canvas.getBoundingClientRect();
+            const canvasX = e.clientX - rectBound.left;
+            const canvasY = e.clientY - rectBound.top;
             finishDrawing(canvasX, canvasY);
         }
     });
     
-    // 双击编辑或完成绘制
     canvas.addEventListener('dblclick', (e) => {
         const rect = canvas.getBoundingClientRect();
         const canvasX = e.clientX - rect.left;
         const canvasY = e.clientY - rect.top;
         
-        // 如果在点击式绘制，双击完成
         if (ManimEditor.mode === 'draw' && ManimEditor.drawingState) {
-            console.log('双击完成绘制');
             finishClickDrawing();
             return;
         }
         
-        // 否则是双击编辑
         const element = findElementAtPoint(canvasX, canvasY);
         if (element) {
-            ManimEditor.selectedElement = element;
-            showPropertyPanel(element);
-            render();
-        }
-    });
-    
-    // 鼠标移动时更新绘制预览
-    canvas.addEventListener('mousemove', (e) => {
-        if (ManimEditor.drawingState && ManimEditor.drawingState.points) {
-            const rect = canvas.getBoundingClientRect();
-            const canvasX = e.clientX - rect.left;
-            const canvasY = e.clientY - rect.top;
-            const manimCoord = ManimEditor.canvasToManim(canvasX, canvasY);
-            
-            // 更新预览点（通用）
-            ManimEditor.previewPoint = [manimCoord.x, manimCoord.y, 0];
+            selectSingleElement(element);
             render();
         }
     });
@@ -618,8 +954,7 @@ function handleClickDrawing(canvasX, canvasY) {
     
     // 第一次点击
     if (!ManimEditor.drawingState) {
-        ManimEditor.selectedElement = null;
-        hidePropertyPanel();
+        clearSelection({ skipRender: true });
     }
     
     // 调用插件处理点击
@@ -630,11 +965,15 @@ function handleClickDrawing(canvasX, canvasY) {
         ManimEditor.drawingState = result.state;
     } else if (result.element) {
         // 完成绘制
-        addElement(result.element);
+        const newElement = addElement(result.element);
+        
+        // 立即选中刚创建的元素，并显示属性面板（保持绘制模式）
+        selectSingleElement(newElement, { skipRender: true });
+        
         ManimEditor.drawingState = null;
         ManimEditor.previewPoint = null;
-        setSelectMode();
-        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+        // 注意：不调用 setSelectMode()，保持在绘制模式
+        // 也不移除工具按钮的 active 状态
     }
     
     render();
@@ -651,11 +990,16 @@ function finishClickDrawing() {
     const element = plugin.onDrawDoubleClick(ManimEditor.drawingState, ManimEditor);
     
     if (element) {
-        addElement(element);
+        const newElement = addElement(element);
+        
+        // 立即选中刚创建的元素，并显示属性面板（保持绘制模式）
+        selectSingleElement(newElement, { skipRender: true });
+        
         ManimEditor.drawingState = null;
         ManimEditor.previewPoint = null;
-        setSelectMode();
-        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+        // 注意：不调用 setSelectMode()，保持在绘制模式
+        // 也不移除工具按钮的 active 状态
+        
         render();
     }
 }
@@ -667,8 +1011,7 @@ function startDrawing(canvasX, canvasY) {
     const manimCoord = ManimEditor.canvasToManim(canvasX, canvasY);
     
     // 清除当前选中的图形，开始绘制新图形
-    ManimEditor.selectedElement = null;
-    hidePropertyPanel();
+    clearSelection({ skipRender: true });
     
     ManimEditor.isDrawing = true;
     ManimEditor.drawStart = { x: canvasX, y: canvasY, manimX: manimCoord.x, manimY: manimCoord.y };
@@ -745,7 +1088,10 @@ function finishDrawing(canvasX, canvasY) {
     updateTempElement(canvasX, canvasY);
     
     // 添加元素到场景
-    addElement(ManimEditor.tempElement);
+    const newElement = addElement(ManimEditor.tempElement);
+    
+    // 立即选中刚创建的元素，并显示属性面板（保持绘制模式）
+    selectSingleElement(newElement, { skipRender: true });
     
     // 清理临时状态
     ManimEditor.tempElement = null;
@@ -848,6 +1194,21 @@ function showPropertyPanel(element) {
     
     // 隐藏选项
     addPropertyField(content, element, 'hidden', '隐藏（不导出）', 'checkbox');
+    
+    // 自动focus到默认字段
+    if (plugin.defaultFocusField) {
+        // 使用 setTimeout 确保DOM已经渲染
+        setTimeout(() => {
+            const targetInput = content.querySelector(`input[data-prop-key="${plugin.defaultFocusField}"]`);
+            if (targetInput) {
+                targetInput.focus();
+                // 如果是文本框，选中全部内容
+                if (targetInput.type === 'text' || targetInput.tagName === 'TEXTAREA') {
+                    targetInput.select();
+                }
+            }
+        }, 0);
+    }
 }
 
 /**
@@ -922,6 +1283,18 @@ function addPropertyField(container, element, key, label, type, options) {
         }
     }
     
+    // 添加 data 属性用于识别字段
+    input.setAttribute('data-prop-key', key);
+    
+    // 判断是否需要跳过历史记录（仅 label 的 text 属性）
+    const isLabelText = element.type === 'label' && key === 'text';
+    let labelTextInitialValue = null;
+    
+    if (isLabelText) {
+        // 记录初始值
+        labelTextInitialValue = input.value;
+    }
+    
     // 监听变化
     input.addEventListener('input', (e) => {
         let value = e.target.value;
@@ -960,9 +1333,22 @@ function addPropertyField(container, element, key, label, type, options) {
         } else {
             // 使用 updateElement() 而不是直接修改（触发智能更新）
             const newProps = { [key]: value };
-            updateElement(element.id, newProps);
+            // label 的 text 属性输入时跳过历史
+            updateElement(element.id, newProps, isLabelText);
         }
     });
+    
+    // 失去焦点时，为 label 的 text 保存历史
+    if (isLabelText) {
+        input.addEventListener('blur', (e) => {
+            const currentValue = e.target.value;
+            // 只有值真正改变了才保存历史
+            if (currentValue !== labelTextInitialValue) {
+                saveToHistory();
+                labelTextInitialValue = currentValue;  // 更新初始值
+            }
+        });
+    }
     
     group.appendChild(input);
     container.appendChild(group);
@@ -980,15 +1366,20 @@ function updatePropertyPanel(element) {
 /**
  * 隐藏属性面板
  */
-function hidePropertyPanel() {
+function hidePropertyPanel(options = {}) {
+    const { preserveSelection = false } = options;
     const panel = document.getElementById('property-panel');
+    if (!panel) return;
     panel.classList.add('hidden');
     // 关闭时清除拖拽产生的定位，确保下次打开回到默认位置
     panel.style.left = '';
     panel.style.top = '';
     panel.style.right = '';
-    ManimEditor.selectedElement = null;
-    render();
+    if (!preserveSelection) {
+        ManimEditor.clearSelection();
+        hideMultiSelectionIndicator();
+        render();
+    }
 }
 
 /**
@@ -1017,6 +1408,7 @@ function initKeyboardShortcuts() {
             activeElement.tagName === 'SELECT' ||
             activeElement.isContentEditable
         );
+        const selectionCount = getSelectionCount();
         
         // Ctrl/Cmd + Z: 撤销
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -1030,12 +1422,59 @@ function initKeyboardShortcuts() {
             redo();
         }
         
+        // Ctrl/Cmd + C: 复制选中元素
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+            if (!isInputFocused && selectionCount > 0) {
+                e.preventDefault();
+                copySelectionToClipboard();
+            }
+        }
+        
+        // Ctrl/Cmd + V: 粘贴
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+            if (!isInputFocused && ManimEditor.clipboard && ManimEditor.clipboard.length > 0) {
+                e.preventDefault();
+                pasteFromClipboard();
+            }
+        }
+        
         // Delete: 删除选中元素（但不在输入框中时）
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            // 只有在非输入框且有选中元素时才删除
-            if (!isInputFocused && ManimEditor.selectedElement) {
+            if (!isInputFocused && selectionCount > 0) {
                 e.preventDefault();
                 deleteSelectedElement();
+            }
+        }
+
+        // 方向键：移动选中元素
+        if (!isInputFocused && selectionCount > 0 && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            e.preventDefault();
+            const pxPerUnit = ManimEditor.pxPerUnit || 70;
+            const stepPx = e.shiftKey ? 10 : 1;
+            const stepUnits = stepPx / pxPerUnit;
+            let deltaX = 0;
+            let deltaY = 0;
+            switch (e.key) {
+                case 'ArrowUp':
+                    deltaY = stepUnits;
+                    break;
+                case 'ArrowDown':
+                    deltaY = -stepUnits;
+                    break;
+                case 'ArrowLeft':
+                    deltaX = -stepUnits;
+                    break;
+                case 'ArrowRight':
+                    deltaX = stepUnits;
+                    break;
+            }
+            applyMoveDeltaToSelection(deltaX, deltaY, { skipHistory: true });
+            saveToHistory();
+            if (selectionCount === 1) {
+                const element = getPrimarySelectedElement();
+                if (element) {
+                    updatePropertyPanel(element);
+                }
             }
         }
         
@@ -1045,9 +1484,13 @@ function initKeyboardShortcuts() {
             if (isInputFocused) {
                 activeElement.blur();
             }
-            setSelectMode();
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-            hidePropertyPanel();
+            if (ManimEditor.mode !== 'select') {
+                setSelectMode();
+                document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+            }
+            clearSelection();
+            ManimEditor.marqueeRect = null;
+            ManimEditor.marqueePreviewIds = [];
             // 关闭导出弹窗
             const exportModal = document.getElementById('export-modal');
             if (exportModal && !exportModal.classList.contains('hidden')) {
@@ -1071,8 +1514,7 @@ function initToolbarButtons() {
     // 清空（不需要确认）
     document.getElementById('clear-btn')?.addEventListener('click', () => {
         ManimEditor.elements = [];
-        ManimEditor.selectedElement = null;
-        hidePropertyPanel();
+        clearSelection({ skipRender: true });
         saveToHistory();
         render();
     });
@@ -1105,10 +1547,14 @@ function initToolbarButtons() {
  * 删除选中的元素
  */
 function deleteSelectedElement() {
-    if (ManimEditor.selectedElement) {
-        deleteElement(ManimEditor.selectedElement.id);
-        hidePropertyPanel();
-    }
+    const ids = [...ManimEditor.selectedElementIds];
+    if (ids.length === 0) return;
+    
+    ManimEditor.elements = ManimEditor.elements.filter(element => !ids.includes(element.id));
+    clearSelection({ skipRender: true });
+    updateElementsOrder();
+    saveToHistory();
+    render();
 }
 
 /**

@@ -38,6 +38,7 @@ registerShape({
     icon: '⌘',
     version: '1.0.0',
     drawMode: 'multiClick', // 单次点击放置
+    defaultFocusField: 'text', // 默认focus到文本字段
 
     createDefault: function(x, y) {
         return {

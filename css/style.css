@@ -256,6 +256,38 @@ button:disabled {
     display: block;
 }
 
+/* 多选提示 */
+#multi-selection-indicator {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(41, 128, 185, 0.92);
+    color: #ffffff;
+    padding: 6px 16px;
+    border-radius: 18px;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    z-index: 90;
+}
+
+#multi-selection-indicator.hidden {
+    display: none;
+}
+
+#multi-selection-indicator .selection-count {
+    font-weight: 600;
+}
+
+#multi-selection-indicator .selection-tip {
+    opacity: 0.85;
+}
+
 /* 右侧属性面板 - 浮动覆盖模式 */
 #property-panel {
     position: fixed;

@@ -14,7 +14,8 @@ const ManimEditor = {
     
     // 数据存储
     elements: [],           // 所有元素（按 z_order 排序）
-    selectedElement: null,  // 当前选中的元素
+    selectedElement: null,  // 当前选中的元素（仅单选时使用）
+    selectedElementIds: [], // 当前选中的元素ID集合（支持多选）
     
     // 形状插件注册表
     shapeRegistry: {},
@@ -22,7 +23,7 @@ const ManimEditor = {
     // 操作历史（撤销/重做）
     history: [],
     historyIndex: -1,
-    maxHistory: 50,
+    maxHistory: 100,
     
     // 编辑器状态
     mode: 'select',         // select | draw (默认为select模式)
@@ -42,8 +43,11 @@ const ManimEditor = {
     tempElement: null,
     
     // 通用绘制状态（插件化v2.1）
-    drawingState: null,  // 插件自定义的绘制状态
-    previewPoint: null,  // 鼠标预览点
+    drawingState: null,      // 插件自定义的绘制状态
+    previewPoint: null,      // 鼠标预览点
+    marqueeRect: null,       // 多选框的画布区域（像素）
+    marqueePreviewIds: [],   // 多选框命中的元素ID集合
+    clipboard: null,         // 复制的元素集合
     
     // Manim坐标系参数（Y轴向上）
     canvasToManim: function(canvasX, canvasY) {
@@ -153,6 +157,71 @@ if (typeof window !== 'undefined') {
 }
 
 /**
+ * 根据ID查找元素
+ */
+ManimEditor.getElementById = function(id) {
+    if (!id) return null;
+    return this.elements.find(element => element.id === id) || null;
+};
+
+/**
+ * 设置选中元素ID集合（内部使用，不负责更新UI）
+ */
+ManimEditor.setSelectionIds = function(newIds) {
+    const uniqueIds = Array.isArray(newIds) ? Array.from(new Set(newIds)) : [];
+    this.selectedElementIds = uniqueIds;
+    this.selectedElement = uniqueIds.length === 1 ? this.getElementById(uniqueIds[0]) : null;
+};
+
+/**
+ * 清空选中状态（内部使用，不负责更新UI）
+ */
+ManimEditor.clearSelection = function() {
+    this.selectedElementIds = [];
+    this.selectedElement = null;
+};
+
+/**
+ * 判断元素是否被选中
+ */
+ManimEditor.isElementSelected = function(id) {
+    return this.selectedElementIds.includes(id);
+};
+
+/**
+ * 获取选中的元素对象集合
+ */
+ManimEditor.getSelectedElements = function() {
+    if (!this.selectedElementIds || this.selectedElementIds.length === 0) {
+        return [];
+    }
+    return this.selectedElementIds
+        .map(id => this.getElementById(id))
+        .filter(Boolean);
+};
+
+/**
+ * 向选中集合中添加元素ID
+ */
+ManimEditor.addToSelection = function(id) {
+    if (!id) return;
+    if (!this.selectedElementIds.includes(id)) {
+        this.selectedElementIds = [...this.selectedElementIds, id];
+    }
+    this.selectedElement = this.selectedElementIds.length === 1 ? this.getElementById(this.selectedElementIds[0]) : null;
+};
+
+/**
+ * 从选中集合中移除元素ID
+ */
+ManimEditor.removeFromSelection = function(id) {
+    if (!id) return;
+    if (!this.selectedElementIds.includes(id)) return;
+    this.selectedElementIds = this.selectedElementIds.filter(item => item !== id);
+    this.selectedElement = this.selectedElementIds.length === 1 ? this.getElementById(this.selectedElementIds[0]) : null;
+};
+
+/**
  * 注册形状插件
  * @param {Object} config - 插件配置对象
  */
@@ -194,6 +263,7 @@ function registerShape(config) {
         properties: config.properties || [],
         capabilities: config.capabilities || {},
         drawMode: config.drawMode || 'drag',
+        defaultFocusField: config.defaultFocusField || null,  // v2.2新增：默认focus的字段
         
         // 导出相关
         toJSON: config.toJSON,
@@ -269,6 +339,12 @@ function render() {
     
     // 绘制坐标系原点标记
     drawOrigin(ctx, canvas);
+
+    const selectedIds = ManimEditor.selectedElementIds || [];
+    const selectionCount = selectedIds.length;
+    const marqueePreviewIds = ManimEditor.marqueePreviewIds || [];
+    const hasMarqueePreview = Array.isArray(marqueePreviewIds) && marqueePreviewIds.length > 0;
+    const multiSelectedElements = selectionCount > 1 ? ManimEditor.getSelectedElements() : [];
     
     // 绘制所有元素（elements 已按 z_order 排序）
     ManimEditor.elements.forEach(element => {
@@ -280,11 +356,31 @@ function render() {
             ctx.restore();
             
             // 如果是选中的元素，绘制选择框
-            if (element.id === ManimEditor.selectedElement?.id) {
-                drawSelectionBox(ctx, element);
+            if (selectionCount === 1 && element.id === selectedIds[0]) {
+                drawSelectionBox(ctx, element, { showHandles: true });
+            } else if (selectionCount > 1 && ManimEditor.isElementSelected(element.id)) {
+                drawSelectionBox(ctx, element, { 
+                    showHandles: false,
+                    strokeStyle: '#5dade2',
+                    lineWidth: 1.5,
+                    lineDash: [4, 3]
+                });
+            } else if (hasMarqueePreview && marqueePreviewIds.includes(element.id) && !ManimEditor.isElementSelected(element.id)) {
+                drawSelectionBox(ctx, element, { 
+                    showHandles: false,
+                    strokeStyle: '#85c1e9',
+                    lineWidth: 1,
+                    lineDash: [3, 3],
+                    alpha: 0.7
+                });
             }
         }
     });
+
+    // 多选时绘制集合外框
+    if (selectionCount > 1 && multiSelectedElements.length > 0) {
+        drawMultiSelectionOutline(ctx, multiSelectedElements);
+    }
     
     // 绘制临时元素（正在绘制中）
     if (ManimEditor.tempElement) {
@@ -306,6 +402,19 @@ function render() {
             plugin.renderDrawingPreview(ctx, ManimEditor.drawingState, ManimEditor);
             ctx.restore();
         }
+    }
+
+    // 绘制框选虚线框
+    if (ManimEditor.marqueeRect) {
+        const rect = ManimEditor.marqueeRect;
+        ctx.save();
+        ctx.strokeStyle = '#2980b9';
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.fillStyle = 'rgba(41, 128, 185, 0.12)';
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.restore();
     }
 }
 
@@ -370,7 +479,16 @@ function drawOrigin(ctx, canvas) {
 /**
  * 绘制选择框 - 调用插件方法（插件化v2.0）
  */
-function drawSelectionBox(ctx, element) {
+function drawSelectionBox(ctx, element, options = {}) {
+    const {
+        showHandles = true,
+        strokeStyle = '#3498db',
+        lineWidth = 2,
+        lineDash = [5, 5],
+        alpha = 1
+    } = options;
+
+    ctx.save();
     // 关键修复：使用插件的getBounds方法！
     const plugin = ManimEditor.shapeRegistry[element.type];
     let bounds;
@@ -387,86 +505,119 @@ function drawSelectionBox(ctx, element) {
     }
     
     // 绘制虚线框
-    ctx.strokeStyle = '#3498db';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = lineWidth;
+    ctx.globalAlpha = alpha;
+    ctx.setLineDash(lineDash);
     ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
     ctx.setLineDash([]);
     
-    // 绘制缩放控制点（手柄）
-    const handles = [
-        { x: bounds.x, y: bounds.y, corner: 'topLeft' },
-        { x: bounds.x + bounds.w, y: bounds.y, corner: 'topRight' },
-        { x: bounds.x + bounds.w, y: bounds.y + bounds.h, corner: 'bottomRight' },
-        { x: bounds.x, y: bounds.y + bounds.h, corner: 'bottomLeft' }
-    ];
-    
-    // 绘制手柄
-    ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#3498db';
-    ctx.lineWidth = 2;
-    
-    handles.forEach(handle => {
-        ctx.beginPath();
-        ctx.arc(handle.x, handle.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-    });
-    
-    // 调试：绘制响应区域（虚线框）
-    if (ManimEditor.showHandleDebug) {
-        const outerSize = 16;
-        const innerSize = 8;
+    if (showHandles) {
+        // 绘制缩放控制点（手柄）
+        const handles = [
+            { x: bounds.x, y: bounds.y, corner: 'topLeft' },
+            { x: bounds.x + bounds.w, y: bounds.y, corner: 'topRight' },
+            { x: bounds.x + bounds.w, y: bounds.y + bounds.h, corner: 'bottomRight' },
+            { x: bounds.x, y: bounds.y + bounds.h, corner: 'bottomLeft' }
+        ];
         
-        ctx.strokeStyle = '#e74c3c';  // 红色
-        ctx.setLineDash([3, 3]);
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.5;
+        // 绘制手柄
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 1;
         
         handles.forEach(handle => {
-            let minX, maxX, minY, maxY;
-            
-            // 计算响应区域（与findControlPoint中的逻辑一致）
-            if (handle.corner === 'topLeft') {
-                minX = handle.x - outerSize;
-                maxX = handle.x + innerSize;
-                minY = handle.y - outerSize;
-                maxY = handle.y + innerSize;
-            } else if (handle.corner === 'topRight') {
-                minX = handle.x - innerSize;
-                maxX = handle.x + outerSize;
-                minY = handle.y - outerSize;
-                maxY = handle.y + innerSize;
-            } else if (handle.corner === 'bottomRight') {
-                minX = handle.x - innerSize;
-                maxX = handle.x + outerSize;
-                minY = handle.y - innerSize;
-                maxY = handle.y + outerSize;
-            } else { // bottomLeft
-                minX = handle.x - outerSize;
-                maxX = handle.x + innerSize;
-                minY = handle.y - innerSize;
-                maxY = handle.y + outerSize;
-            }
-            
-            // 绘制响应区域矩形
-            ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-            
-            // 绘制中心十字
-            ctx.strokeStyle = '#f39c12';
             ctx.beginPath();
-            ctx.moveTo(handle.x - 4, handle.y);
-            ctx.lineTo(handle.x + 4, handle.y);
-            ctx.moveTo(handle.x, handle.y - 4);
-            ctx.lineTo(handle.x, handle.y + 4);
+            ctx.arc(handle.x, handle.y, 6, 0, Math.PI * 2);
+            ctx.fill();
             ctx.stroke();
         });
         
-        ctx.globalAlpha = 1;
-        ctx.setLineDash([]);
+        // 调试：绘制响应区域（虚线框）
+        if (ManimEditor.showHandleDebug) {
+            const outerSize = 16;
+            const innerSize = 8;
+            
+            ctx.strokeStyle = '#e74c3c';  // 红色
+            ctx.setLineDash([3, 3]);
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.5;
+            
+            handles.forEach(handle => {
+                let minX, maxX, minY, maxY;
+                
+                // 计算响应区域（与findControlPoint中的逻辑一致）
+                if (handle.corner === 'topLeft') {
+                    minX = handle.x - outerSize;
+                    maxX = handle.x + innerSize;
+                    minY = handle.y - outerSize;
+                    maxY = handle.y + innerSize;
+                } else if (handle.corner === 'topRight') {
+                    minX = handle.x - innerSize;
+                    maxX = handle.x + outerSize;
+                    minY = handle.y - outerSize;
+                    maxY = handle.y + innerSize;
+                } else if (handle.corner === 'bottomRight') {
+                    minX = handle.x - innerSize;
+                    maxX = handle.x + outerSize;
+                    minY = handle.y - innerSize;
+                    maxY = handle.y + outerSize;
+                } else { // bottomLeft
+                    minX = handle.x - outerSize;
+                    maxX = handle.x + innerSize;
+                    minY = handle.y - innerSize;
+                    maxY = handle.y + outerSize;
+                }
+                
+                // 绘制响应区域矩形
+                ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+                
+                // 绘制中心十字
+                ctx.strokeStyle = '#f39c12';
+                ctx.beginPath();
+                ctx.moveTo(handle.x - 4, handle.y);
+                ctx.lineTo(handle.x + 4, handle.y);
+                ctx.moveTo(handle.x, handle.y - 4);
+                ctx.lineTo(handle.x, handle.y + 4);
+                ctx.stroke();
+            });
+            
+            ctx.globalAlpha = 1;
+            ctx.setLineDash([]);
+        }
     }
     
     // 为曲线额外绘制控制线和控制点（已在curve.js中处理）
+    ctx.restore();
+}
+
+/**
+ * 绘制多选集合的外框
+ */
+function drawMultiSelectionOutline(ctx, elements) {
+    if (!elements || elements.length === 0) return;
+    
+    const boundsList = elements
+        .map(element => {
+            const plugin = ManimEditor.shapeRegistry[element.type];
+            return plugin && plugin.getBounds ? plugin.getBounds(element, ManimEditor) : null;
+        })
+        .filter(Boolean);
+    
+    if (boundsList.length === 0) return;
+    
+    const minX = Math.min(...boundsList.map(b => b.x));
+    const minY = Math.min(...boundsList.map(b => b.y));
+    const maxX = Math.max(...boundsList.map(b => b.x + b.w));
+    const maxY = Math.max(...boundsList.map(b => b.y + b.h));
+    
+    ctx.save();
+    ctx.strokeStyle = '#2980b9';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+    ctx.restore();
 }
 
 /**
@@ -489,9 +640,11 @@ function deleteElement(elementId) {
     const index = ManimEditor.elements.findIndex(e => e.id === elementId);
     if (index !== -1) {
         ManimEditor.elements.splice(index, 1);
-        if (ManimEditor.selectedElement?.id === elementId) {
-            ManimEditor.selectedElement = null;
+        
+        if (ManimEditor.isElementSelected(elementId)) {
+            ManimEditor.removeFromSelection(elementId);
         }
+        
         saveToHistory();
         render();
         return true;
@@ -665,7 +818,7 @@ function loadFromLocalStorage() {
 function clearScene() {
     if (confirm('确定要清空整个场景吗？此操作不可撤销。')) {
         ManimEditor.elements = [];
-        ManimEditor.selectedElement = null;
+        ManimEditor.clearSelection();
         ManimEditor.history = [];
         ManimEditor.historyIndex = -1;
         saveToHistory();
@@ -737,7 +890,7 @@ function importFromJSON(jsonData) {
                 return element;
             });
             updateElementsOrder();  // 更新排序缓存
-            ManimEditor.selectedElement = null;
+            ManimEditor.clearSelection();
             saveToHistory();
             render();
             return true;
