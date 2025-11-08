@@ -11,7 +11,7 @@ const BRACE_DEFAULTS = {
     color: '#2c3e50',
     stroke_width: 2,
     direction: 1,           // 1 = 左侧（逆时针90度），-1 = 右侧（顺时针90度）
-    buff: 0.1,             // 距离连线的间距（Manim单位）
+    buff: 0.2,             // 距离连线的间距（Manim单位）
     sharpness: 2.0,         // 大括号的尖锐度
     z_order: 0
 };
@@ -26,60 +26,49 @@ const BRACE_PREVIEW = {
  * 简洁的几何风格，使用直线段
  */
 function calculateBracePath(p1, p2, direction, buff, sharpness, pxPerUnit) {
-    // 1. 计算连线向量
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const length = Math.sqrt(dx * dx + dy * dy);
-    
     if (length === 0) {
         return null;
     }
-    
-    // 2. 单位向量（沿连线方向）
+
     const ux = dx / length;
     const uy = dy / length;
-    
-    // 3. 法向量（垂直方向，逆时针90度）
     const nx = -uy;
     const ny = ux;
-    
-    // 4. 应用方向和间距
+
     const dir = direction || 1;
     const buffValue = buff !== undefined ? buff : BRACE_DEFAULTS.buff;
     const buffPx = Math.max(0, buffValue * pxPerUnit);
-    
-    // 5. 几何参数
-    const MM_TO_PX = 96 / 25.4;               // 1毫米 ≈ 3.78px
-    const MIN_SHORT_LENGTH = MM_TO_PX;        // 短线最小长度：1mm
-    const TIP_LENGTH_BASE = 0.15 * pxPerUnit; // 尖端基准长度（可随缩放）
-    const TIP_ANGLE = 30 * Math.PI / 180;
-    
-    const minCapAxis = MIN_SHORT_LENGTH / Math.SQRT2;
-    let capAxis = Math.max(minCapAxis, buffPx);  // 沿主线分量
-    let capNormal = buffPx;                      // 沿法线分量
-    
-    let tipLength = TIP_LENGTH_BASE;
+
+    const MM_TO_PX = 96 / 25.4;                 // 1mm ≈ 3.78px
+    const CAP_ANGLE = Math.PI / 4;              // 45°
+    const TIP_ANGLE = Math.PI / 6;              // 30°
+    const BASE_SHORT_LENGTH = MM_TO_PX;         // 短线默认 1mm
+    const BASE_TIP_LENGTH = 0.22 * pxPerUnit;   // 尖端基准长度（近似 Manim）
+
+    const tipScale = sharpness !== undefined ? (sharpness / BRACE_DEFAULTS.sharpness) : 1;
+
+    let capLength = Math.min(length / 2, BASE_SHORT_LENGTH);
+    let tipLength = Math.min(length / 3, BASE_TIP_LENGTH * tipScale);
+
+    let capAxis = capLength * Math.cos(CAP_ANGLE);
     let tipAxis = tipLength * Math.cos(TIP_ANGLE);
-    
-    // 计算各段沿主线方向的总长度，确保不超过整体长度
-    let remainingAxis = length - 2 * capAxis;
-    if (remainingAxis < 0) {
-        // 当 buff 过大导致不可行时，收缩短线的主轴分量
-        capAxis = length / 2;
-        remainingAxis = 0;
-    }
-    
-    if (remainingAxis < 2 * tipAxis) {
-        const scale = remainingAxis > 0 ? (remainingAxis / (2 * tipAxis)) : 0;
-        tipAxis *= scale;
+
+    let totalAxis = 2 * (capAxis + tipAxis);
+    if (totalAxis > length) {
+        const scale = length > 0 ? length / totalAxis : 0;
+        capLength *= scale;
         tipLength *= scale;
+        capAxis = capLength * Math.cos(CAP_ANGLE);
+        tipAxis = tipLength * Math.cos(TIP_ANGLE);
+        totalAxis = 2 * (capAxis + tipAxis);
     }
-    
-    let mainSegmentLength = (remainingAxis - 2 * tipAxis) / 2;
-    if (mainSegmentLength < 0) {
-        mainSegmentLength = 0;
-    }
-    
+
+    const mainAxis = Math.max(0, length - totalAxis);
+    const mainSegmentLength = mainAxis / 2;
+
     function rotateUnit(vec, angle) {
         const cosA = Math.cos(angle);
         const sinA = Math.sin(angle);
@@ -88,34 +77,43 @@ function calculateBracePath(p1, p2, direction, buff, sharpness, pxPerUnit) {
             y: vec.x * sinA + vec.y * cosA
         };
     }
-    
+
     const uVec = { x: ux, y: uy };
-    const tipDirUp = rotateUnit(uVec, dir * TIP_ANGLE);
-    const tipDirDown = rotateUnit(uVec, -dir * TIP_ANGLE);
-    
-    const startCapVec = {
-        x: uVec.x * capAxis + nx * dir * capNormal,
-        y: uVec.y * capAxis + ny * dir * capNormal
-    };
+    const startCapDir = rotateUnit(uVec, dir * CAP_ANGLE);
+    const tipUpDir = rotateUnit(uVec, dir * TIP_ANGLE);
+    const tipDownDir = rotateUnit(uVec, -dir * TIP_ANGLE);
+
     const mainVec = { x: uVec.x * mainSegmentLength, y: uVec.y * mainSegmentLength };
-    const tipUpVec = { x: tipDirUp.x * tipLength, y: tipDirUp.y * tipLength };
-    const tipDownVec = { x: tipDirDown.x * tipLength, y: tipDirDown.y * tipLength };
-    
+    const startCapVec = { x: startCapDir.x * capLength, y: startCapDir.y * capLength };
+    const tipUpVec = { x: tipUpDir.x * tipLength, y: tipUpDir.y * tipLength };
+    const tipDownVec = { x: tipDownDir.x * tipLength, y: tipDownDir.y * tipLength };
+
     let current = { x: p1.x, y: p1.y };
     const points = [current];
-    
-    function advanceVec(vec) {
-        current = { x: current.x + vec.x, y: current.y + vec.y };
+
+    function push(delta) {
+        current = { x: current.x + delta.x, y: current.y + delta.y };
         points.push(current);
     }
-    
-    advanceVec(startCapVec);   // 短线1
-    advanceVec(mainVec);       // 主线前半
-    advanceVec(tipUpVec);      // 尖端上侧
-    advanceVec(tipDownVec);    // 尖端下侧
-    advanceVec(mainVec);       // 主线后半
-    advanceVec({ x: p2.x - current.x, y: p2.y - current.y }); // 短线2，精确收尾
-    
+
+    push(startCapVec);
+    push(mainVec);
+    push(tipUpVec);
+    push(tipDownVec);
+    push(mainVec);
+    push({ x: p2.x - current.x, y: p2.y - current.y });
+
+    if (buffPx !== 0) {
+        const shiftX = nx * dir * buffPx;
+        const shiftY = ny * dir * buffPx;
+        for (let i = 0; i < points.length; i++) {
+            points[i] = {
+                x: points[i].x + shiftX,
+                y: points[i].y + shiftY
+            };
+        }
+    }
+
     if (typeof window !== 'undefined' && window.debugBraceSegments) {
         const lengths = [];
         for (let i = 0; i < points.length - 1; i++) {
@@ -130,7 +128,7 @@ function calculateBracePath(p1, p2, direction, buff, sharpness, pxPerUnit) {
         }
         console.log('[brace] segment lengths (px/mm):', lengths);
     }
-    
+
     return points;
 }
 
