@@ -7,6 +7,20 @@
  * 初始化UI
  */
 let multiSelectionIndicator = null;
+let drawingMagnifier = null;
+
+const DRAWING_MAGNIFIER_CONFIG = {
+    size: 100,
+    zoom: 10,
+    position: {
+        top: null,
+        right: null,
+        bottom: 24,
+        left: 24
+    },
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    crosshairColor: 'rgba(52, 152, 219, 0.75)'
+};
 
 function initUI() {
     initToolbox();
@@ -15,6 +29,7 @@ function initUI() {
     initKeyboardShortcuts();
     initToolbarButtons();
     initSelectionIndicator();
+    initDrawingMagnifier();
 }
 
 /**
@@ -32,6 +47,148 @@ function initSelectionIndicator() {
         <span class="selection-tip">（属性面板已隐藏）</span>
     `;
     container.appendChild(multiSelectionIndicator);
+}
+
+function initDrawingMagnifier() {
+    const container = document.getElementById('canvas-container');
+    if (!container) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'drawing-magnifier';
+    wrapper.className = 'canvas-magnifier hidden';
+
+    // 使用 CSS 变量设置默认尺寸，便于后期覆盖
+    wrapper.style.setProperty('--magnifier-size', `${DRAWING_MAGNIFIER_CONFIG.size}px`);
+
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width = DRAWING_MAGNIFIER_CONFIG.size;
+    previewCanvas.height = DRAWING_MAGNIFIER_CONFIG.size;
+    previewCanvas.className = 'canvas-magnifier__canvas';
+
+    wrapper.appendChild(previewCanvas);
+    container.appendChild(wrapper);
+
+    const ctx = previewCanvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    drawingMagnifier = {
+        root: wrapper,
+        canvas: previewCanvas,
+        ctx,
+        sampleSize: Math.max(1, DRAWING_MAGNIFIER_CONFIG.size / DRAWING_MAGNIFIER_CONFIG.zoom),
+        config: {
+            ...DRAWING_MAGNIFIER_CONFIG,
+            position: { ...DRAWING_MAGNIFIER_CONFIG.position }
+        }
+    };
+
+    setDrawingMagnifierPosition({ ...drawingMagnifier.config.position });
+
+    if (!ManimEditor.uiComponents) {
+        ManimEditor.uiComponents = {};
+    }
+
+    ManimEditor.uiComponents.magnifier = {
+        show: showDrawingMagnifier,
+        hide: hideDrawingMagnifier,
+        update: updateDrawingMagnifier,
+        setPosition: setDrawingMagnifierPosition,
+        getPosition: () => ({ ...drawingMagnifier.config.position }),
+        getConfig: () => ({ ...drawingMagnifier.config })
+    };
+}
+
+function formatMagnifierPositionValue(value) {
+    if (value === null || value === undefined) return '';
+    return typeof value === 'number' ? `${value}px` : String(value);
+}
+
+function setDrawingMagnifierPosition(position = {}) {
+    if (!drawingMagnifier || !drawingMagnifier.root) return;
+    const keys = ['top', 'right', 'bottom', 'left'];
+    keys.forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(position, key)) {
+            drawingMagnifier.config.position[key] = position[key];
+        }
+    });
+
+    // 当设置 top/left 时，自动清除对应的 bottom/right，反之亦然，便于重新定位
+    if (Object.prototype.hasOwnProperty.call(position, 'top') && !Object.prototype.hasOwnProperty.call(position, 'bottom')) {
+        drawingMagnifier.config.position.bottom = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(position, 'bottom') && !Object.prototype.hasOwnProperty.call(position, 'top')) {
+        drawingMagnifier.config.position.top = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(position, 'left') && !Object.prototype.hasOwnProperty.call(position, 'right')) {
+        drawingMagnifier.config.position.right = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(position, 'right') && !Object.prototype.hasOwnProperty.call(position, 'left')) {
+        drawingMagnifier.config.position.left = null;
+    }
+
+    keys.forEach(key => {
+        const cssVar = `--magnifier-${key}`;
+        const stored = drawingMagnifier.config.position[key];
+        if (stored === null || stored === undefined) {
+            drawingMagnifier.root.style.removeProperty(cssVar);
+        } else {
+            drawingMagnifier.root.style.setProperty(cssVar, formatMagnifierPositionValue(stored));
+        }
+    });
+}
+
+function showDrawingMagnifier() {
+    if (!drawingMagnifier || !drawingMagnifier.root) return;
+    drawingMagnifier.root.classList.remove('hidden');
+}
+
+function hideDrawingMagnifier() {
+    if (!drawingMagnifier || !drawingMagnifier.root) return;
+    drawingMagnifier.root.classList.add('hidden');
+}
+
+function updateDrawingMagnifier(canvasX, canvasY) {
+    if (!drawingMagnifier || !drawingMagnifier.ctx || !ManimEditor.canvas) return;
+    const { ctx, sampleSize, config } = drawingMagnifier;
+    const size = config.size;
+    if (sampleSize <= 0 || size <= 0) return;
+
+    const mainCanvas = ManimEditor.canvas;
+
+    let sx = canvasX - sampleSize / 2;
+    let sy = canvasY - sampleSize / 2;
+
+    // 边缘裁剪
+    if (sx < 0) sx = 0;
+    if (sy < 0) sy = 0;
+    if (sx + sampleSize > mainCanvas.width) {
+        sx = Math.max(0, mainCanvas.width - sampleSize);
+    }
+    if (sy + sampleSize > mainCanvas.height) {
+        sy = Math.max(0, mainCanvas.height - sampleSize);
+    }
+
+    ctx.save();
+    ctx.fillStyle = config.backgroundColor;
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillRect(0, 0, size, size);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(mainCanvas, sx, sy, sampleSize, sampleSize, 0, 0, size, size);
+
+    // 十字准星
+    const mid = size / 2;
+    ctx.strokeStyle = config.crosshairColor;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.moveTo(mid, 0);
+    ctx.lineTo(mid, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, mid);
+    ctx.lineTo(size, mid);
+    ctx.stroke();
+    ctx.restore();
 }
 
 /**
@@ -354,6 +511,8 @@ function initToolbox() {
         `;
         
         btn.addEventListener('click', () => {
+            clearSelection({ skipRender: true });
+
             if (ManimEditor.mode === 'draw' && ManimEditor.currentShapeType === plugin.type) {
                 // 如果已经是绘制此形状模式，则切换回选择模式
                 setSelectMode();
@@ -365,6 +524,7 @@ function initToolbox() {
                 // 更新按钮状态
                 document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
+                render();
             }
         });
         
@@ -385,6 +545,7 @@ function setSelectMode() {
     
     document.getElementById('canvas-container').classList.remove('draw-mode');
     document.getElementById('canvas-container').classList.add('select-mode');
+    hideDrawingMagnifier();
     
     render();
 }
@@ -397,6 +558,7 @@ function setDrawMode(shapeType) {
     ManimEditor.currentShapeType = shapeType;
     document.getElementById('canvas-container').classList.add('draw-mode');
     document.getElementById('canvas-container').classList.remove('select-mode');
+    showDrawingMagnifier();
 }
 
 /**
@@ -436,6 +598,13 @@ function initCanvasEvents() {
         
         coordDisplay.textContent = displayText;
         coordDisplay.classList.add('visible');
+
+        if (ManimEditor.mode === 'draw' && ManimEditor.currentShapeType) {
+            showDrawingMagnifier();
+            updateDrawingMagnifier(canvasX, canvasY);
+        } else {
+            hideDrawingMagnifier();
+        }
         
         if (isDragging) {
             if (dragMode === 'control-point' && dragElement) {
@@ -514,6 +683,7 @@ function initCanvasEvents() {
     
     canvas.addEventListener('mouseleave', () => {
         coordDisplay.classList.remove('visible');
+        hideDrawingMagnifier();
     });
     
     canvas.addEventListener('mousedown', (e) => {
@@ -1045,7 +1215,8 @@ function updateTempElement(canvasX, canvasY) {
         canvasX: canvasX,
         canvasY: canvasY,
         manimX: manimCoord.x,
-        manimY: manimCoord.y
+        manimY: manimCoord.y,
+        isShift: window.isShiftPressed || false
     };
     
     // 调用插件的拖动更新方法
@@ -1435,6 +1606,21 @@ function initKeyboardShortcuts() {
             if (!isInputFocused && ManimEditor.clipboard && ManimEditor.clipboard.length > 0) {
                 e.preventDefault();
                 pasteFromClipboard();
+            }
+        }
+        
+        // Ctrl/Cmd + A: 全选元素
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+            if (!isInputFocused) {
+                e.preventDefault();
+                if (ManimEditor.mode !== 'select') {
+                    setSelectMode();
+                    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+                }
+                const allIds = ManimEditor.elements.map(element => element.id);
+                if (allIds.length > 0) {
+                    setSelectionByIds(allIds);
+                }
             }
         }
         

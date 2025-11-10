@@ -151,9 +151,58 @@ ManimEditor.utils.setRenderOpacity = function(ctx, element) {
     }
 };
 
+/**
+ * Shift轴锁定工具：根据起点与当前点决定锁定到水平或竖直方向
+ */
+ManimEditor.utils.getAxisLockedPoint = function(startCoord, currentCoord, editor) {
+    if (!startCoord || !currentCoord) {
+        return currentCoord;
+    }
+
+    const targetEditor = editor || ManimEditor;
+
+    const startManimX = startCoord.manimX !== undefined ? startCoord.manimX : 0;
+    const startManimY = startCoord.manimY !== undefined ? startCoord.manimY : 0;
+    const currentManimX = currentCoord.manimX !== undefined ? currentCoord.manimX : startManimX;
+    const currentManimY = currentCoord.manimY !== undefined ? currentCoord.manimY : startManimY;
+
+    const deltaX = currentManimX - startManimX;
+    const deltaY = currentManimY - startManimY;
+    const lockHorizontal = Math.abs(deltaX) >= Math.abs(deltaY);
+
+    const lockedManimX = lockHorizontal ? currentManimX : startManimX;
+    const lockedManimY = lockHorizontal ? startManimY : currentManimY;
+
+    let lockedCanvasX = currentCoord.canvasX !== undefined ? currentCoord.canvasX : currentCoord.x;
+    let lockedCanvasY = currentCoord.canvasY !== undefined ? currentCoord.canvasY : currentCoord.y;
+
+    if (typeof targetEditor?.manimToCanvas === 'function') {
+        const canvasPoint = targetEditor.manimToCanvas(lockedManimX, lockedManimY);
+        lockedCanvasX = canvasPoint.x;
+        lockedCanvasY = canvasPoint.y;
+    } else {
+        const startCanvasX = startCoord.canvasX !== undefined ? startCoord.canvasX : startCoord.x;
+        const startCanvasY = startCoord.canvasY !== undefined ? startCoord.canvasY : startCoord.y;
+
+        if (lockHorizontal) {
+            lockedCanvasY = startCanvasY;
+        } else {
+            lockedCanvasX = startCanvasX;
+        }
+    }
+
+    return Object.assign({}, currentCoord, {
+        manimX: lockedManimX,
+        manimY: lockedManimY,
+        canvasX: lockedCanvasX,
+        canvasY: lockedCanvasY
+    });
+};
+
 // 兼容旧插件：提供全局别名，便于逐步迁移
 if (typeof window !== 'undefined') {
     window.setRenderOpacity = ManimEditor.utils.setRenderOpacity;
+    window.getAxisLockedPoint = ManimEditor.utils.getAxisLockedPoint;
 }
 
 /**

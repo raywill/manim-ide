@@ -256,6 +256,33 @@ button:disabled {
     display: block;
 }
 
+/* 绘制放大镜 */
+.canvas-magnifier {
+    position: absolute;
+    top: var(--magnifier-top, auto);
+    left: var(--magnifier-left, auto);
+    bottom: var(--magnifier-bottom, 24px);
+    right: var(--magnifier-right, auto);
+    width: var(--magnifier-size, 100px);
+    height: var(--magnifier-size, 100px);
+    pointer-events: none;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 2px solid rgba(52, 152, 219, 0.85);
+    border-radius: 8px;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    z-index: 120;
+}
+
+.canvas-magnifier.hidden {
+    display: none;
+}
+
+.canvas-magnifier__canvas {
+    width: 100%;
+    height: 100%;
+}
+
 /* 多选提示 */
 #multi-selection-indicator {
     position: absolute;
