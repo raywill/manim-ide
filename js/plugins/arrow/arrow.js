@@ -153,8 +153,12 @@ registerShape({
     },
     
     updateWhileDrawing: function(element, start, current, editor) {
+        const target = current.isShift && editor?.utils?.getAxisLockedPoint
+            ? editor.utils.getAxisLockedPoint(start, current, editor)
+            : current;
+
         element.props.start = [start.manimX, start.manimY, 0];
-        element.props.end = [current.manimX, current.manimY, 0];
+        element.props.end = [target.manimX, target.manimY, 0];
     },
     
     handleScale: function(element, scaleInfo, editor) {
