@@ -32,6 +32,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 显示欢迎信息
     showWelcomeMessage();
+
+    if (typeof window.initializeShareViewer === 'function') {
+        window.initializeShareViewer();
+    }
 });
 
 /**

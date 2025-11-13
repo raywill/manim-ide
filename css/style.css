@@ -31,6 +31,10 @@ body {
     font-weight: 600;
 }
 
+.hidden {
+    display: none !important;
+}
+
 .toolbar-left,
 .toolbar-center,
 .toolbar-right {
@@ -70,6 +74,42 @@ button.primary:hover {
 button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.auth-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 12px;
+}
+
+.auth-status {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.auth-controls button {
+    font-size: 13px;
+    padding: 6px 12px;
+    background-color: #3d566e;
+}
+
+.auth-controls button:hover {
+    background-color: #48627b;
+}
+
+.cloud-btn {
+    background-color: #1abc9c;
+}
+
+.cloud-btn:hover {
+    background-color: #16a085;
+}
+
+.share-indicator {
+    font-size: 16px;
+    color: #2ecc71;
+    margin-right: 4px;
 }
 
 /* 主容器 */

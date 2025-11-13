@@ -21,6 +21,16 @@
             <button id="clear-btn" title="清空所有图形">🗑️ 清空</button>
         </div>
         <div class="toolbar-right">
+            <div id="auth-controls" class="auth-controls">
+                <span id="auth-status" class="auth-status">未登录</span>
+                <span id="share-status-indicator" class="share-indicator hidden" title="当前画布已分享">●</span>
+                <button id="register-passkey-btn" class="auth-btn">注册</button>
+                <button id="login-passkey-btn" class="auth-btn">登录</button>
+                <button id="logout-btn" class="auth-btn hidden">退出</button>
+                <button id="save-workspace-btn" class="cloud-btn hidden">保存</button>
+                <button id="share-workspace-btn" class="cloud-btn hidden">分享</button>
+                <button id="unshare-workspace-btn" class="cloud-btn hidden">取消分享</button>
+            </div>
             <button id="import-json-btn">📥 导入JSON</button>
             <button id="export-json-btn">💾 导出JSON</button>
             <button id="export-btn" class="primary">📤 导出Manim代码</button>

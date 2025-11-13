@@ -22,6 +22,26 @@ const DRAWING_MAGNIFIER_CONFIG = {
     crosshairColor: 'rgba(52, 152, 219, 0.75)'
 };
 
+const BACKEND_ENDPOINT = window.ManimBackendConfig?.backendEndpoint || 'canvas.php';
+const PASSKEY_SUPPORTED = typeof window.PublicKeyCredential === 'function';
+
+const backendAuthState = {
+    loggedIn: false,
+    userId: null,
+    displayName: '',
+    isShared: false,
+    shareUrl: null,
+    lastUpdatedAt: null
+};
+
+let backendUIRefs = null;
+let backendAvailable = true;
+let shareViewerActive = false;
+
+function isShareViewerMode() {
+    return shareViewerActive;
+}
+
 function initUI() {
     initToolbox();
     initPropertyPanel();
@@ -30,6 +50,7 @@ function initUI() {
     initToolbarButtons();
     initSelectionIndicator();
     initDrawingMagnifier();
+    initBackendIntegration();
 }
 
 /**
@@ -190,6 +211,495 @@ function updateDrawingMagnifier(canvasX, canvasY) {
     ctx.stroke();
     ctx.restore();
 }
+
+/**
+ * 云端工作区与 Passkey 集成
+ */
+function initBackendIntegration() {
+    backendUIRefs = {
+        status: document.getElementById('auth-status'),
+        shareIndicator: document.getElementById('share-status-indicator'),
+        registerBtn: document.getElementById('register-passkey-btn'),
+        loginBtn: document.getElementById('login-passkey-btn'),
+        logoutBtn: document.getElementById('logout-btn'),
+        saveBtn: document.getElementById('save-workspace-btn'),
+        shareBtn: document.getElementById('share-workspace-btn'),
+        unshareBtn: document.getElementById('unshare-workspace-btn')
+    };
+
+    if (!backendUIRefs.status) {
+        backendAvailable = false;
+        return;
+    }
+
+    if (!BACKEND_ENDPOINT) {
+        backendAvailable = false;
+        backendUIRefs.status.textContent = '云端未配置';
+        updateBackendUI();
+        return;
+    }
+
+    if (!PASSKEY_SUPPORTED) {
+        backendAvailable = false;
+        backendUIRefs.status.textContent = '浏览器不支持 Passkey';
+        updateBackendUI();
+        return;
+    }
+
+    backendUIRefs.registerBtn?.addEventListener('click', startPasskeyRegistration);
+    backendUIRefs.loginBtn?.addEventListener('click', startPasskeyLogin);
+    backendUIRefs.logoutBtn?.addEventListener('click', handleBackendLogout);
+    backendUIRefs.saveBtn?.addEventListener('click', handleSaveWorkspace);
+    backendUIRefs.shareBtn?.addEventListener('click', handleShareWorkspace);
+    backendUIRefs.unshareBtn?.addEventListener('click', handleUnshareWorkspace);
+
+    updateBackendUI();
+    fetchAuthSession();
+}
+
+function updateBackendUI() {
+    if (!backendUIRefs || !backendUIRefs.status) return;
+
+    if (!backendAvailable) {
+        backendUIRefs.status.textContent = PASSKEY_SUPPORTED ? '云端不可用' : backendUIRefs.status.textContent;
+        backendUIRefs.registerBtn?.classList.add('hidden');
+        backendUIRefs.loginBtn?.classList.add('hidden');
+        backendUIRefs.logoutBtn?.classList.add('hidden');
+        backendUIRefs.saveBtn?.classList.add('hidden');
+        backendUIRefs.shareBtn?.classList.add('hidden');
+        backendUIRefs.unshareBtn?.classList.add('hidden');
+        backendUIRefs.shareIndicator?.classList.add('hidden');
+        return;
+    }
+
+    if (!backendAuthState.loggedIn) {
+        backendUIRefs.status.textContent = '未登录';
+        backendUIRefs.registerBtn?.classList.remove('hidden');
+        backendUIRefs.loginBtn?.classList.remove('hidden');
+        backendUIRefs.logoutBtn?.classList.add('hidden');
+        backendUIRefs.saveBtn?.classList.add('hidden');
+        backendUIRefs.shareBtn?.classList.add('hidden');
+        backendUIRefs.unshareBtn?.classList.add('hidden');
+        backendUIRefs.shareIndicator?.classList.add('hidden');
+        return;
+    }
+
+    const label = backendAuthState.displayName || (backendAuthState.userId ? `用户 #${backendAuthState.userId}` : '已登录');
+    backendUIRefs.status.textContent = `已登录：${label}`;
+    backendUIRefs.registerBtn?.classList.add('hidden');
+    backendUIRefs.loginBtn?.classList.add('hidden');
+    backendUIRefs.logoutBtn?.classList.remove('hidden');
+    backendUIRefs.saveBtn?.classList.remove('hidden');
+    backendUIRefs.shareBtn?.classList.remove('hidden');
+    backendUIRefs.unshareBtn?.classList.toggle('hidden', !backendAuthState.isShared);
+    backendUIRefs.shareIndicator?.classList.toggle('hidden', !backendAuthState.isShared);
+}
+
+function buildBackendUrl(action, params = {}) {
+    let endpoint = BACKEND_ENDPOINT || 'canvas.php';
+    let url;
+    if (/^https?:\/\//i.test(endpoint)) {
+        url = new URL(endpoint);
+    } else {
+        url = new URL(endpoint, window.location.origin);
+    }
+    url.searchParams.set('action', action);
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+            url.searchParams.set(key, value);
+        }
+    });
+    return url.toString();
+}
+
+async function backendRequest(action, { method = 'GET', body = null, params = {} } = {}) {
+    const url = buildBackendUrl(action, params);
+    const fetchOptions = {
+        method,
+        credentials: 'include',
+        headers: {}
+    };
+
+    if (method === 'POST') {
+        fetchOptions.headers['Content-Type'] = 'application/json';
+        fetchOptions.body = JSON.stringify(body ?? {});
+    }
+
+    let response;
+    try {
+        response = await fetch(url, fetchOptions);
+        backendAvailable = true;
+    } catch (error) {
+        backendAvailable = false;
+        updateBackendUI();
+        throw new Error('无法连接服务器');
+    }
+
+    const text = await response.text();
+    let data = {};
+    if (text) {
+        try {
+            data = JSON.parse(text);
+        } catch (parseError) {
+            console.error('解析服务器响应失败', parseError, text);
+            throw new Error('服务器返回格式无效');
+        }
+    }
+
+    if (!response.ok) {
+        const message = typeof data.error === 'string' ? data.error : response.statusText;
+        throw new Error(message || '请求失败');
+    }
+
+    return data;
+}
+
+function backendGet(action, params) {
+    return backendRequest(action, { method: 'GET', params });
+}
+
+function backendPost(action, body, params) {
+    return backendRequest(action, { method: 'POST', body, params });
+}
+
+function base64urlToUint8Array(base64url) {
+    const padding = base64url.length % 4;
+    let base64 = base64url;
+    if (padding > 0) {
+        base64 += '='.repeat(4 - padding);
+    }
+    base64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    const outputArray = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) {
+        outputArray[i] = raw.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+function uint8ArrayToBase64url(buffer) {
+    const bytes = buffer instanceof ArrayBuffer ? new Uint8Array(buffer) : buffer;
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function prepareCreationOptions(options) {
+    if (!options) return null;
+    const publicKey = { ...options };
+    publicKey.challenge = base64urlToUint8Array(options.challenge);
+    if (publicKey.user && publicKey.user.id) {
+        publicKey.user = { ...publicKey.user, id: base64urlToUint8Array(publicKey.user.id) };
+    }
+    if (Array.isArray(publicKey.excludeCredentials)) {
+        publicKey.excludeCredentials = publicKey.excludeCredentials.map(item => ({
+            ...item,
+            id: base64urlToUint8Array(item.id)
+        }));
+    }
+    return publicKey;
+}
+
+function prepareRequestOptions(options) {
+    if (!options) return null;
+    const publicKey = { ...options };
+    publicKey.challenge = base64urlToUint8Array(options.challenge);
+    if (Array.isArray(publicKey.allowCredentials)) {
+        publicKey.allowCredentials = publicKey.allowCredentials.map(item => ({
+            ...item,
+            id: base64urlToUint8Array(item.id)
+        }));
+    }
+    return publicKey;
+}
+
+function credentialToJSON(credential) {
+    if (!credential) return null;
+    const json = {
+        id: credential.id,
+        type: credential.type,
+        rawId: credential.rawId ? uint8ArrayToBase64url(credential.rawId) : null,
+        response: {}
+    };
+
+    if (credential.response) {
+        const response = credential.response;
+        if (response.clientDataJSON) {
+            json.response.clientDataJSON = uint8ArrayToBase64url(response.clientDataJSON);
+        }
+        if (response.attestationObject) {
+            json.response.attestationObject = uint8ArrayToBase64url(response.attestationObject);
+        }
+        if (response.authenticatorData) {
+            json.response.authenticatorData = uint8ArrayToBase64url(response.authenticatorData);
+        }
+        if (response.signature) {
+            json.response.signature = uint8ArrayToBase64url(response.signature);
+        }
+        if (response.userHandle) {
+            json.response.userHandle = uint8ArrayToBase64url(response.userHandle);
+        }
+    }
+
+    return json;
+}
+
+async function startPasskeyRegistration() {
+    if (!PASSKEY_SUPPORTED) {
+        notifyUser('当前环境不支持 Passkey', true);
+        return;
+    }
+    try {
+        const displayName = prompt('请输入显示名称（可选）', backendAuthState.displayName || '') || undefined;
+        const options = await backendPost('auth_register_options', displayName ? { displayName } : {});
+        const credential = await navigator.credentials.create({
+            publicKey: prepareCreationOptions(options)
+        });
+        const verification = credentialToJSON(credential);
+        const verifyResult = await backendPost('auth_register_verify', verification);
+        backendAuthState.loggedIn = !!verifyResult.loggedIn;
+        backendAuthState.userId = verifyResult.userId ?? null;
+        backendAuthState.displayName = displayName || backendAuthState.displayName;
+        await fetchAuthSession();
+        notifyUser('Passkey 注册成功');
+    } catch (error) {
+        handleBackendError(error, '注册失败');
+    }
+}
+
+async function startPasskeyLogin() {
+    if (!PASSKEY_SUPPORTED) {
+        notifyUser('当前环境不支持 Passkey', true);
+        return;
+    }
+    try {
+        const options = await backendGet('auth_login_options');
+        if (Array.isArray(options.allowCredentials) && options.allowCredentials.length === 0) {
+            notifyUser('暂无可用凭据，请先完成注册', true);
+            return;
+        }
+        const assertion = await navigator.credentials.get({
+            publicKey: prepareRequestOptions(options)
+        });
+        const verification = credentialToJSON(assertion);
+        const verifyResult = await backendPost('auth_login_verify', verification);
+        backendAuthState.loggedIn = !!verifyResult.loggedIn;
+        backendAuthState.userId = verifyResult.userId ?? null;
+        await fetchAuthSession();
+        notifyUser('登录成功');
+    } catch (error) {
+        handleBackendError(error, '登录失败');
+    }
+}
+
+async function handleBackendLogout() {
+    try {
+        await backendPost('auth_logout', {});
+    } catch (error) {
+        console.warn('注销失败', error);
+    }
+    backendAuthState.loggedIn = false;
+    backendAuthState.userId = null;
+    backendAuthState.displayName = '';
+    backendAuthState.isShared = false;
+    backendAuthState.shareUrl = null;
+    backendAuthState.lastUpdatedAt = null;
+    updateBackendUI();
+}
+
+async function fetchAuthSession() {
+    if (!PASSKEY_SUPPORTED || !BACKEND_ENDPOINT) {
+        return;
+    }
+    try {
+        const session = await backendGet('auth_session');
+        if (!session.loggedIn) {
+            backendAuthState.loggedIn = false;
+            backendAuthState.userId = null;
+            backendAuthState.displayName = '';
+            backendAuthState.isShared = false;
+            backendAuthState.shareUrl = null;
+            backendAuthState.lastUpdatedAt = null;
+            updateBackendUI();
+            return;
+        }
+        backendAuthState.loggedIn = true;
+        backendAuthState.userId = session.userId ?? null;
+        backendAuthState.displayName = session.displayName || session.username || backendAuthState.displayName;
+        await refreshCanvasMeta({ loadCanvas: !isShareViewerMode() });
+    } catch (error) {
+        backendAvailable = false;
+        console.warn('获取会话失败', error);
+        updateBackendUI();
+    }
+}
+
+async function refreshCanvasMeta(options = {}) {
+    if (!backendAuthState.loggedIn) {
+        updateBackendUI();
+        return null;
+    }
+    try {
+        const info = await backendGet('canvas_get');
+        backendAuthState.isShared = !!info.isShared;
+        backendAuthState.shareUrl = info.shareUrl || null;
+        backendAuthState.lastUpdatedAt = info.updatedAt || null;
+        updateBackendUI();
+        if (options.loadCanvas && info && info.contentJson && !isShareViewerMode()) {
+            applyCloudCanvas(info.contentJson);
+        }
+        return info;
+    } catch (error) {
+        console.warn('获取画布信息失败', error);
+        updateBackendUI();
+        return null;
+    }
+}
+
+async function handleSaveWorkspace() {
+    if (!backendAuthState.loggedIn) {
+        notifyUser('请先登录', true);
+        return;
+    }
+    try {
+        const payload = {
+            contentJson: JSON.stringify(exportToJSON())
+        };
+        const result = await backendPost('canvas_save', payload);
+        backendAuthState.isShared = !!result.isShared;
+        if (result.shareUrl) {
+            backendAuthState.shareUrl = result.shareUrl;
+        }
+        backendAuthState.lastUpdatedAt = result.updatedAt || backendAuthState.lastUpdatedAt;
+        updateBackendUI();
+        notifyUser('已保存到云端');
+    } catch (error) {
+        handleBackendError(error, '保存失败');
+    }
+}
+
+function applyCloudCanvas(contentJson) {
+    if (!contentJson) return;
+    try {
+        const parsed = JSON.parse(contentJson);
+        importFromJSON(parsed);
+        console.log('[云端] 已加载最新画布');
+    } catch (error) {
+        console.error('解析云端画布失败', error);
+        notifyUser('加载云端画布失败：数据格式无效', true);
+    }
+}
+
+async function handleShareWorkspace() {
+    if (!backendAuthState.loggedIn) {
+        notifyUser('请先登录', true);
+        return;
+    }
+    try {
+        const payload = {
+            contentJson: JSON.stringify(exportToJSON())
+        };
+        const result = await backendPost('canvas_share', payload);
+        backendAuthState.isShared = true;
+        backendAuthState.shareUrl = result.shareUrl || backendAuthState.shareUrl;
+        backendAuthState.lastUpdatedAt = result.updatedAt || backendAuthState.lastUpdatedAt;
+        updateBackendUI();
+        displayShareLink(backendAuthState.shareUrl);
+    } catch (error) {
+        handleBackendError(error, '分享失败');
+    }
+}
+
+async function handleUnshareWorkspace() {
+    if (!backendAuthState.loggedIn) {
+        notifyUser('请先登录', true);
+        return;
+    }
+    try {
+        await backendPost('canvas_unshare', {});
+        backendAuthState.isShared = false;
+        backendAuthState.shareUrl = null;
+        updateBackendUI();
+        notifyUser('已取消分享');
+    } catch (error) {
+        handleBackendError(error, '取消分享失败');
+    }
+}
+
+function displayShareLink(shareUrl) {
+    if (!shareUrl) {
+        notifyUser('分享成功，但未获取到分享链接', true);
+        return;
+    }
+    const message = `分享链接已生成：\n${shareUrl}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            notifyUser(`${message}\n已复制到剪贴板`, true);
+        }).catch(() => {
+            notifyUser(message, true);
+        });
+    } else {
+        notifyUser(message, true);
+    }
+}
+
+function handleBackendError(error, fallbackMessage) {
+    const message = error && error.message ? error.message : fallbackMessage;
+    console.error(fallbackMessage, error);
+    notifyUser(`${fallbackMessage}：${message}`, true);
+}
+
+function notifyUser(message, forceAlert = false) {
+    console.log(`[云端] ${message}`);
+    if (forceAlert && typeof window !== 'undefined') {
+        window.alert(message);
+    }
+}
+
+async function initializeShareViewer() {
+    const params = new URLSearchParams(window.location.search);
+    const shareToken = params.get('share_token');
+    if (!shareToken) {
+        return;
+    }
+
+    try {
+        const data = await backendGet('share_view', { token: shareToken });
+        if (!data || !data.contentJson) {
+            notifyUser('分享的画布不存在或已取消分享', true);
+            return;
+        }
+        const parsed = JSON.parse(data.contentJson);
+        importFromJSON(parsed);
+        enterShareReadonlyMode();
+        notifyUser('正在查看共享画布（只读模式）');
+    } catch (error) {
+        handleBackendError(error, '加载共享画布失败');
+    }
+}
+
+function enterShareReadonlyMode() {
+    document.body.classList.add('share-readonly');
+    const editButtons = document.querySelectorAll('.toolbar-center button, #shape-tools .tool-btn, #delete-btn, #clear-btn');
+    editButtons.forEach(btn => {
+        if (btn) {
+            btn.disabled = true;
+        }
+    });
+    const propertyPanelBtn = document.getElementById('close-panel-btn');
+    if (propertyPanelBtn) {
+        propertyPanelBtn.disabled = true;
+    }
+    const panel = document.getElementById('property-panel');
+    if (panel) {
+        panel.classList.add('hidden');
+    }
+    ManimEditor.mode = 'select';
+}
+
+window.initializeShareViewer = initializeShareViewer;
 
 /**
  * 获取当前选中数量
