@@ -67,8 +67,14 @@ window.addEventListener('error', function(event) {
 /**
  * 在页面卸载前保存数据
  */
-window.addEventListener('beforeunload', function() {
+window.addEventListener('beforeunload', function(event) {
     saveToLocalStorage();
+    if (typeof window.hasUnsavedCloudChanges === 'function' && window.hasUnsavedCloudChanges()) {
+        const warning = '当前画布尚未保存至云端，确定要退出吗？';
+        event.preventDefault();
+        event.returnValue = warning;
+        return warning;
+    }
 });
 
 /**

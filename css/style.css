@@ -76,40 +76,77 @@ button:disabled {
     cursor: not-allowed;
 }
 
-.auth-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-right: 12px;
-}
-
 .auth-status {
     font-size: 13px;
     color: rgba(255, 255, 255, 0.85);
 }
 
-.auth-controls button {
-    font-size: 13px;
-    padding: 6px 12px;
-    background-color: #3d566e;
-}
-
-.auth-controls button:hover {
-    background-color: #48627b;
-}
-
-.cloud-btn {
-    background-color: #1abc9c;
-}
-
-.cloud-btn:hover {
-    background-color: #16a085;
-}
-
 .share-indicator {
     font-size: 16px;
     color: #2ecc71;
-    margin-right: 4px;
+    margin: 0 6px;
+}
+
+.settings-menu {
+    position: relative;
+}
+
+.icon-btn {
+    padding: 6px 10px;
+    font-size: 18px;
+    background-color: #3d566e;
+    border-radius: 50%;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-btn:hover {
+    background-color: #48627b;
+}
+
+.settings-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 180px;
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    padding: 8px 0;
+    z-index: 200;
+}
+
+.settings-dropdown .menu-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: #2c3e50;
+    padding: 8px 16px;
+    font-size: 14px;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transform: none;
+    transition: background-color 0.15s ease;
+}
+
+.settings-dropdown .menu-item:hover {
+    background-color: rgba(52, 152, 219, 0.12);
+    transform: none;
+}
+
+.settings-dropdown .menu-item:active {
+    transform: none;
+}
+
+.menu-divider {
+    height: 1px;
+    background-color: rgba(0, 0, 0, 0.1);
+    margin: 6px 0;
 }
 
 /* 主容器 */

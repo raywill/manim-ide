@@ -31,12 +31,14 @@ const backendAuthState = {
     displayName: '',
     isShared: false,
     shareUrl: null,
-    lastUpdatedAt: null
+    lastUpdatedAt: null,
+    lastSavedSnapshot: null
 };
 
 let backendUIRefs = null;
 let backendAvailable = true;
 let shareViewerActive = false;
+let settingsMenuInitialized = false;
 
 function isShareViewerMode() {
     return shareViewerActive;
@@ -224,8 +226,15 @@ function initBackendIntegration() {
         logoutBtn: document.getElementById('logout-btn'),
         saveBtn: document.getElementById('save-workspace-btn'),
         shareBtn: document.getElementById('share-workspace-btn'),
-        unshareBtn: document.getElementById('unshare-workspace-btn')
+        unshareBtn: document.getElementById('unshare-workspace-btn'),
+        importBtn: document.getElementById('import-json-btn'),
+        exportJsonBtn: document.getElementById('export-json-btn'),
+        exportManimBtn: document.getElementById('export-btn'),
+        menuBtn: document.getElementById('settings-btn'),
+        menuDropdown: document.getElementById('settings-dropdown')
     };
+
+    setupSettingsMenu();
 
     if (!backendUIRefs.status) {
         backendAvailable = false;
@@ -269,6 +278,7 @@ function updateBackendUI() {
         backendUIRefs.shareBtn?.classList.add('hidden');
         backendUIRefs.unshareBtn?.classList.add('hidden');
         backendUIRefs.shareIndicator?.classList.add('hidden');
+        closeSettingsMenu();
         return;
     }
 
@@ -281,6 +291,7 @@ function updateBackendUI() {
         backendUIRefs.shareBtn?.classList.add('hidden');
         backendUIRefs.unshareBtn?.classList.add('hidden');
         backendUIRefs.shareIndicator?.classList.add('hidden');
+        closeSettingsMenu();
         return;
     }
 
@@ -293,6 +304,7 @@ function updateBackendUI() {
     backendUIRefs.shareBtn?.classList.remove('hidden');
     backendUIRefs.unshareBtn?.classList.toggle('hidden', !backendAuthState.isShared);
     backendUIRefs.shareIndicator?.classList.toggle('hidden', !backendAuthState.isShared);
+    closeSettingsMenu();
 }
 
 function buildBackendUrl(action, params = {}) {
@@ -451,6 +463,7 @@ async function startPasskeyRegistration() {
         notifyUser('当前环境不支持 Passkey', true);
         return;
     }
+    closeSettingsMenu();
     try {
         const displayName = prompt('请输入显示名称（可选）', backendAuthState.displayName || '') || undefined;
         const options = await backendPost('auth_register_options', displayName ? { displayName } : {});
@@ -474,6 +487,7 @@ async function startPasskeyLogin() {
         notifyUser('当前环境不支持 Passkey', true);
         return;
     }
+    closeSettingsMenu();
     try {
         const options = await backendGet('auth_login_options');
         if (Array.isArray(options.allowCredentials) && options.allowCredentials.length === 0) {
@@ -495,6 +509,7 @@ async function startPasskeyLogin() {
 }
 
 async function handleBackendLogout() {
+    closeSettingsMenu();
     try {
         await backendPost('auth_logout', {});
     } catch (error) {
@@ -506,6 +521,7 @@ async function handleBackendLogout() {
     backendAuthState.isShared = false;
     backendAuthState.shareUrl = null;
     backendAuthState.lastUpdatedAt = null;
+    backendAuthState.lastSavedSnapshot = null;
     updateBackendUI();
 }
 
@@ -522,6 +538,7 @@ async function fetchAuthSession() {
             backendAuthState.isShared = false;
             backendAuthState.shareUrl = null;
             backendAuthState.lastUpdatedAt = null;
+            backendAuthState.lastSavedSnapshot = null;
             updateBackendUI();
             return;
         }
@@ -563,6 +580,7 @@ async function handleSaveWorkspace() {
         notifyUser('请先登录', true);
         return;
     }
+    closeSettingsMenu();
     try {
         const payload = {
             contentJson: JSON.stringify(exportToJSON())
@@ -573,6 +591,7 @@ async function handleSaveWorkspace() {
             backendAuthState.shareUrl = result.shareUrl;
         }
         backendAuthState.lastUpdatedAt = result.updatedAt || backendAuthState.lastUpdatedAt;
+        markCloudSaved();
         updateBackendUI();
         notifyUser('已保存到云端');
     } catch (error) {
@@ -585,6 +604,7 @@ function applyCloudCanvas(contentJson) {
     try {
         const parsed = JSON.parse(contentJson);
         importFromJSON(parsed);
+        markCloudSaved(getCanvasSnapshot());
         console.log('[云端] 已加载最新画布');
     } catch (error) {
         console.error('解析云端画布失败', error);
@@ -597,6 +617,7 @@ async function handleShareWorkspace() {
         notifyUser('请先登录', true);
         return;
     }
+    closeSettingsMenu();
     try {
         const payload = {
             contentJson: JSON.stringify(exportToJSON())
@@ -605,6 +626,7 @@ async function handleShareWorkspace() {
         backendAuthState.isShared = true;
         backendAuthState.shareUrl = result.shareUrl || backendAuthState.shareUrl;
         backendAuthState.lastUpdatedAt = result.updatedAt || backendAuthState.lastUpdatedAt;
+        markCloudSaved();
         updateBackendUI();
         displayShareLink(backendAuthState.shareUrl);
     } catch (error) {
@@ -617,6 +639,7 @@ async function handleUnshareWorkspace() {
         notifyUser('请先登录', true);
         return;
     }
+    closeSettingsMenu();
     try {
         await backendPost('canvas_unshare', {});
         backendAuthState.isShared = false;
@@ -665,6 +688,8 @@ async function initializeShareViewer() {
         return;
     }
 
+    shareViewerActive = true;
+
     try {
         const data = await backendGet('share_view', { token: shareToken });
         if (!data || !data.contentJson) {
@@ -700,6 +725,80 @@ function enterShareReadonlyMode() {
 }
 
 window.initializeShareViewer = initializeShareViewer;
+window.hasUnsavedCloudChanges = hasUnsavedCloudChanges;
+
+function setupSettingsMenu() {
+    if (settingsMenuInitialized) return;
+    if (!backendUIRefs?.menuBtn || !backendUIRefs?.menuDropdown) return;
+
+    backendUIRefs.menuBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleSettingsMenu();
+    });
+
+    backendUIRefs.menuDropdown.addEventListener('click', (event) => {
+        if (event.target.closest('button')) {
+            closeSettingsMenu();
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        if (!backendUIRefs?.menuDropdown || backendUIRefs.menuDropdown.classList.contains('hidden')) {
+            return;
+        }
+        if (!event.target.closest('.settings-menu')) {
+            closeSettingsMenu();
+        }
+    });
+
+    settingsMenuInitialized = true;
+}
+
+function toggleSettingsMenu() {
+    if (!backendUIRefs?.menuDropdown || !backendUIRefs?.menuBtn) return;
+    const shouldOpen = backendUIRefs.menuDropdown.classList.contains('hidden');
+    backendUIRefs.menuDropdown.classList.toggle('hidden', !shouldOpen);
+    backendUIRefs.menuBtn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+}
+
+function closeSettingsMenu() {
+    if (!backendUIRefs?.menuDropdown || !backendUIRefs?.menuBtn) return;
+    if (!backendUIRefs.menuDropdown.classList.contains('hidden')) {
+        backendUIRefs.menuDropdown.classList.add('hidden');
+        backendUIRefs.menuBtn.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function getCanvasSnapshot() {
+    try {
+        if (!window.ManimEditor || !Array.isArray(ManimEditor.elements)) {
+            return null;
+        }
+        return JSON.stringify(ManimEditor.elements);
+    } catch (error) {
+        console.warn('生成画布快照失败', error);
+        return null;
+    }
+}
+
+function markCloudSaved(snapshotOverride) {
+    if (!backendAuthState.loggedIn) {
+        backendAuthState.lastSavedSnapshot = null;
+        return;
+    }
+    backendAuthState.lastSavedSnapshot = snapshotOverride !== undefined ? snapshotOverride : getCanvasSnapshot();
+}
+
+function hasUnsavedCloudChanges() {
+    if (!backendAuthState.loggedIn || shareViewerActive) return false;
+    const current = getCanvasSnapshot();
+    if (current === null) return false;
+    if (!backendAuthState.lastSavedSnapshot) {
+        return Array.isArray(ManimEditor?.elements) && ManimEditor.elements.length > 0;
+    }
+    return current !== backendAuthState.lastSavedSnapshot;
+}
 
 /**
  * 获取当前选中数量
